@@ -1,21 +1,97 @@
+# pyproject.toml
+# Agentic RAG v2 — 팀 공통 환경 명세 (uv 사용)
+# [KO] 이 파일은 모든 팀원이 동일한 버전/패키지로 개발할 수 있도록 고정합니다.
+#      운영 의존성은 [project].dependencies, 개발 도구는 [project.optional-dependencies].dev에 분리했습니다.
+#      black/pytest 등은 "나중에 적용"해도 문제 없습니다. (필요 시 `uv sync -E dev`)
+
 [project]
-name = "eval-agent"
+name = "agentic-rag-financial-advisory"
 version = "0.1.0"
-description = "Add your description here"
+description = "Agentic RAG v2 for AI financial advisory startup evaluation (LangGraph + Chroma + OpenAI)"
 readme = "README.md"
 requires-python = ">=3.11"
+
+# [KO] 런타임 필수 의존성: 최소 셋업으로 바로 실행 가능하도록 구성
 dependencies = [
+  # --- LLM/Orchestration ---
   "openai>=1.50.0",
   "langgraph>=0.6.9",
+  "langchain>=0.3.0",
+
+  # --- Vector DB (로컬) ---
   "chromadb>=1.1.1",
-  "beautifulsoup4>=4.14.2",
-  "pdfplumber>=0.11.7",
-  "pymupdf>=1.26.4",
-  "pandas>=2.3.3",
+
+  # --- Crawling/Parsing ---
+  "requests>=2.32.0",
+  "beautifulsoup4>=4.14.0",
+  "pdfplumber>=0.11.0",
+  "pymupdf>=1.26.0",
+
+  # --- Data/Vis ---
+  "pandas>=2.2.0",
   "matplotlib>=3.9.0",
+
+  # --- PDF Rendering (HTML→PDF) ---
   "weasyprint>=61.0",
+
+  # --- CLI/Logging UX ---
   "rich>=13.7.0",
+  "pydantic>=2.8.0",
+  "python-dotenv>=1.0.1",
 ]
 
+# [KO] 선택(개발) 의존성: 포맷팅/정적검사/테스트는 후반 적용 권장
 [project.optional-dependencies]
-dev = ["ruff>=0.6.9", "black>=24.8.0", "pytest>=8.3.0"]
+dev = [
+  "black>=24.8.0",
+  "ruff>=0.6.9",
+  "pytest>=8.3.0",
+  "pytest-cov>=5.0.0",
+  "mypy>=1.10.0",
+  "types-requests>=2.32.0.20241016",
+]
+
+# [KO] uv 관련 설정: 패키지로 취급(로컬 개발 편의)
+[tool.uv]
+package = true
+
+# [KO] Ruff 기본 설정(원한다면 나중에 수정)
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+# [KO] Black 포맷(원한다면 나중에 적용)
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+# [KO] Pytest 기본 옵션(추후 테스트 추가 시 유용)
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+# [KO] 실행 스크립트 별칭(원하면 사용)
+[project.scripts]
+rag-run = "graph.run:main"
+
+# ─────────────────────────────────────────────────────────────
+# [KO] 패키지 디스커버리/데이터 설정 (setuptools)
+#     ⚠️ 주의: 'packages'를 배열로 명시하면, 동일 경로에
+#        [tool.setuptools.packages.find] (테이블)과 "동시에" 쓸 수 없습니다.
+#        (TOML: array ↔ table 충돌)
+#     → 현재는 명시 고정 방식을 사용하므로 find 섹션은 제거합니다.
+# ─────────────────────────────────────────────────────────────
+[tool.setuptools]
+packages = ["agents", "graph"]
+
+# [tool.setuptools.packages.find]
+# where = ["."]
+# include = ["agents*", "graph*"]     # ← (참고용) src 레이아웃 전환 시 사용
+# exclude = ["data*", "outputs*", "docs*", "scripts*", "tests*"]
+
+[tool.setuptools.package-data]
+# [KO] 패키지 안에 포함할 "정적 리소스"를 지정합니다.
+#     - 예) PDF 템플릿(Jinja2), 아이콘, 샘플 데이터 등
+#     - 현재는 포함할 리소스가 없어서 빈 목록입니다.
+"agents" = []
+"graph"  = []
