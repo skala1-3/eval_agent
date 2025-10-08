@@ -165,7 +165,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for item in scorecard.items %}
+            {% for item in scorecard["items"] %}
             <tr>
               <td><code>{{ item.key }}</code></td>
               <td class="right">{{ item.value|round(2) }}</td>
@@ -191,7 +191,7 @@
 
     {% set limit = evidence_limit_per_axis or 3 %}
 
-    {% for item in scorecard.items %}
+    {% for item in scorecard["items"] %}
       <div class="box mb12">
         <h3>■ {{ item.key }} — 점수 {{ item.value|round(2) }} / 신뢰도 {{ item.confidence|round(2) }}</h3>
         {% if item.evidence %}
