@@ -1,271 +1,135 @@
-
-
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <title>FinChat AI — 투자 평가 보고서</title>
-
-  <!-- [KO] 인쇄(A4) 최적화: WeasyPrint 권장 설정 -->
+  <title>FinChat AI — 투자 컨설팅 보고서</title>
   <style>
-    @page {
-      size: A4;
-      margin: 18mm 16mm 18mm 16mm;
-    }
-    :root {
-      --text: #111;
-      --muted: #666;
-      --line: #e5e5e5;
-      --accent: #1f6feb;
-      --ok: #198754;
-      --warn: #c07d00;
-      --bad: #c03221;
-      --bg-lite: #f8f9fb;
-    }
-    html, body {
-      font-family: "Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", Arial, sans-serif;
-      color: var(--text);
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-      font-size: 11.5pt;
-      line-height: 1.55;
-    }
-    h1,h2,h3 { margin: 0.2em 0 0.35em; }
-    h1 { font-size: 20pt; }
-    h2 { font-size: 14pt; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
-    h3 { font-size: 12.5pt; color: var(--muted); }
-    .muted { color: var(--muted); }
-    .pill {
-      display: inline-block; padding: 2px 8px; border-radius: 999px;
-      font-size: 9pt; vertical-align: middle; border: 1px solid var(--line); background: var(--bg-lite);
-    }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
-    .kv { display: grid; grid-template-columns: 120px 1fr; gap: 8px 10px; }
-    .box { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fff; }
-    .scorebox { border-left: 4px solid var(--accent); }
-    .good { color: var(--ok); }
-    .warn { color: var(--warn); }
-    .bad  { color: var(--bad); }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    th { background: #f5f7fb; text-align: left; }
-    .small { font-size: 9.5pt; }
-    .center { text-align: center; }
-    .right { text-align: right; }
-    .mb8 { margin-bottom: 8px; }
-    .mb12 { margin-bottom: 12px; }
-    .mb16 { margin-bottom: 16px; }
-    .mb24 { margin-bottom: 24px; }
-    .mt8 { margin-top: 8px; }
-    .mt16 { margin-top: 16px; }
-    .tag { display:inline-block; padding: 2px 6px; margin: 2px 4px 0 0; border: 1px solid var(--line); border-radius: 6px; font-size: 9pt; color: #333; background:#fff; }
-    .pagebreak { page-break-before: always; }
+    @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
+    :root { --text:#111; --muted:#666; --line:#e5e5e5; --accent:#1f6feb; --ok:#198754; --warn:#c07d00; --bad:#c03221; --bg:#fff; --bg-lite:#f8f9fb; }
+    html,body{ font-family:"Noto Sans CJK KR","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",Arial,sans-serif; color:var(--text); font-size:11pt; line-height:1.55; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    h1,h2,h3{ margin:0 0 .4em 0; } h1{font-size:20pt;} h2{font-size:14pt; border-bottom:2px solid var(--line); padding-bottom:4px;} h3{font-size:12.5pt; color:var(--muted);}
+    .muted{color:var(--muted);} .pill{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:9pt;background:var(--bg-lite);}
+    .good{color:var(--ok);} .warn{color:var(--warn);} .bad{color:var(--bad);}
+    .grid-2{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;} .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+    .kv{display:grid;grid-template-columns:110px 1fr;gap:8px 10px;} .box{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff;}
+    .scorebox{border-left:4px solid var(--accent);} .small{font-size:9.5pt;} .right{text-align:right;} .mb8{margin-bottom:8px;} .mb12{margin-bottom:12px;} .mb16{margin-bottom:16px;} .mb24{margin-bottom:24px;} .mt8{margin-top:8px;} .pagebreak{page-break-before:always;}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;} th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;} th{background:#f5f7fb;text-align:left;}
+    .td-sm{width:18mm;} .td-md{width:40mm;}
+    .tag{display:inline-block;padding:2px 6px;margin:2px 4px 0 0;border:1px solid var(--line);border-radius:6px;font-size:9pt;background:#fff;}
+    ul{margin:0 0 0 18px; padding:0;}
   </style>
 </head>
 <body>
 
-  <!-- ─────────────────────────────────────────────────────────────
-       [KO] 1) 표지
-       - 회사명/총점/의사결정/질의/생성시각을 강조
-  ───────────────────────────────────────────────────────────── -->
-  <section>
-    <h1>AI Financial Advisory Startup — 투자 평가 보고서</h1>
-    <div class="muted mb16">2025-10-10 21:06 · Query: “AI financial advisory startup”</div>
+  <!-- 헤더 -->
+  <section class="mb16">
+    <h1>AI Financial Advisory — 투자 컨설팅 보고서</h1>
+    <div class="muted mb12">2025-10-10 22:51 · Query: “AI financial advisory startup”</div>
 
     <div class="grid-2">
       <div class="box scorebox">
         <h2>FinChat AI</h2>
         <div class="kv mt8">
-          <div class="muted">Website</div><div>
-            
-              <a href="https://finchat.ai">https://finchat.ai</a>
-            
-          </div>
+          <div class="muted">Website</div><div><a href="https://finchat.ai">https://finchat.ai</a></div>
           <div class="muted">Founded</div><div>2023</div>
           <div class="muted">Stage</div><div>Seed</div>
           <div class="muted">Headcount</div><div>10-20</div>
           <div class="muted">Region</div><div>KR</div>
           <div class="muted">Tags</div>
-          <div>
-            
-              <span class="tag">Financial AI</span>
-            
-              <span class="tag">KYC</span>
-            
-              <span class="tag">Contact Center</span>
-            
-          </div>
+          <div><span class="tag">Financial AI</span><span class="tag">KYC</span><span class="tag">Contact Center</span></div>
         </div>
       </div>
 
       <div class="box">
         <h2>요약(Score)</h2>
-        <div class="mb8">
-          총점:
-          
-          <strong style="font-size: 16pt">8.1</strong> / 10
-        </div>
+        <div class="mb8">총점: <strong style="font-size:16pt">8.2</strong> / 10</div>
         <div class="mb12">
           의사결정:
-          
-            <span class="pill good">INVEST (권장)</span>
+          <span class="pill good">INVEST (권장)</span>
           
         </div>
-        <div class="small muted">
-          조건: total ≥ 7.5 &amp; mean(confidence) ≥ 0.55 일 때 INVEST
-        </div>
+        <div class="small muted">조건: total ≥ 7.5 &amp; mean(confidence) ≥ 0.55</div>
       </div>
     </div>
   </section>
 
-  <!-- ─────────────────────────────────────────────────────────────
-       [KO] 2) 레이더 차트 & 축별 점수표
-       - radar_chart_path가 있으면 이미지 삽입
-       - 각 축의 점수/신뢰도/노트를 표로 정리
-  ───────────────────────────────────────────────────────────── -->
-  <section class="mt16">
-    <div class="grid-2">
-      <div class="box">
-        <h2>레이더 차트</h2>
-        
-          <div class="muted small">레이더 차트 이미지가 없습니다. (옵션)</div>
-        
-      </div>
+  <!-- 컨설팅 섹션 -->
+  <section class="mb16">
+    <h2>Executive Summary</h2>
+    <p>FinChat AI는 2023년에 설립된 한국의 금융 AI 스타트업으로, KYC 및 상담 센터 자동화를 통해 고객의 AHT를 18% 감소시키고 FCR을 9%p 향상시켰습니다. 현재 10-20명의 인력을 보유하고 있으며, Seed 단계에 있습니다. 국내 금융 AI 시장의 연평균 성장률이 15%에 달하는 가운데, FinChat AI의 기술력과 시장성이 뛰어나 투자에 적합합니다.</p>
+  </section>
 
-      <div class="box">
-        <h2>축별 점수(0–10) &amp; 신뢰도(0–1)</h2>
-        <table class="small">
-          <thead>
-            <tr>
-              <th>축(Key)</th>
-              <th class="right">점수</th>
-              <th class="right">신뢰도</th>
-              <th>요약</th>
-            </tr>
-          </thead>
-          <tbody>
-            
-            <tr>
-              <td><code>ai_tech</code></td>
-              <td class="right">2.3</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 개선, FCR 9%p 상승으로 시장성과 기술성 모두 우수.</td>
-            </tr>
-            
-            <tr>
-              <td><code>market</code></td>
-              <td class="right">1.8</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 감소, FCR 9%p 향상으로 시장성과 기술성 모두 우수.</td>
-            </tr>
-            
-            <tr>
-              <td><code>traction</code></td>
-              <td class="right">1.2</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 개선, FCR 9%p 상승으로 금융 상담 자동화 성과 확인.</td>
-            </tr>
-            
-            <tr>
-              <td><code>moat</code></td>
-              <td class="right">1.0</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 개선, FCR 9%p 상승, 한국어 인식률 및 보안 인증에서 경쟁사 대비 우위.</td>
-            </tr>
-            
-            <tr>
-              <td><code>risk</code></td>
-              <td class="right">0.8</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 감소, FCR 9%p 향상으로 시장성과 기술성 모두 우수.</td>
-            </tr>
-            
-            <tr>
-              <td><code>team</code></td>
-              <td class="right">0.9</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 감소, FCR 9%p 향상으로 시장성과 기술성 모두 우수.</td>
-            </tr>
-            
-            <tr>
-              <td><code>deployability</code></td>
-              <td class="right">0.9</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 감소, FCR 9%p 향상으로 시장성과 기술성 모두 우수.</td>
-            </tr>
-            
-            <tr>
-              <td><code>total</code></td>
-              <td class="right">8.1</td>
-              <td class="right">0.62</td>
-              <td>AHT 18% 감소, FCR 9%p 향상으로 시장성과 기술성 모두 우수.</td>
-            </tr>
-            
-          </tbody>
-        </table>
-      </div>
+  <section class="mb16">
+    <h2>Competitive Position</h2>
+    <ul>
+      <li>금융 상담 자동화로 AHT를 18% 감소시키는 성과를 보유.</li><li>온프렘/VPC/PII 마스킹 및 감사추적 기능을 갖춘 엔터프라이즈 보안 설계.</li><li>국내 금융 AI 시장의 연 15% 성장과 규제 친화적인 접근 방식.</li><li>한국어 성능 및 온프렘 대응에서 경쟁력을 확보.</li><li>고객 맞춤형 솔루션 제공으로 고객 만족도 향상.</li>
+    </ul>
+  </section>
+
+  <section class="mb16">
+    <h2>Risk &amp; Considerations</h2>
+    <ul>
+      <li>Seed 단계로 인한 자금 조달 리스크 - 초기 투자자와의 네트워킹 강화 필요.</li><li>기술 발전 속도에 따른 경쟁 심화 - 지속적인 R&D 투자로 기술 우위 확보.</li><li>규제 변화에 따른 사업 모델 조정 필요성 - 법률 자문 및 규제 모니터링 체계 구축.</li><li>시장 진입 장벽 및 고객 신뢰 구축의 어려움 - 초기 성공 사례 확보 및 마케팅 강화.</li>
+    </ul>
+  </section>
+
+  <section class="mb16">
+    <h2>Investment Outlook</h2>
+    <p>FinChat AI는 기술력과 시장성이 우수하여 긍정적인 투자 전망을 가지고 있습니다. 향후 3~6개월 내에 고객 확보를 위한 마케팅 캠페인을 강화하고, 초기 투자자와의 관계를 적극적으로 구축하는 것이 중요합니다. 또한, 기술적 우위를 지속하기 위해 R&D에 대한 투자를 늘려야 합니다.</p>
+  </section>
+
+  <div class="pagebreak"></div>
+
+  <!-- 레이더 + 축별 점수표 -->
+  <section class="mt8">
+    <div class="box">
+      <h2>축별 점수(0–10) &amp; 신뢰도(0–1)</h2>
+      <table class="small">
+        <thead><tr><th style="width:28mm;">축(Key)</th><th class="right td-sm">점수</th><th class="right td-sm">신뢰도</th></tr></thead>
+        <tbody>
+        
+          <tr><td><code>ai_tech</code></td><td class="right">2.4</td><td class="right">0.62</td></tr>
+        
+          <tr><td><code>market</code></td><td class="right">1.8</td><td class="right">0.62</td></tr>
+        
+          <tr><td><code>traction</code></td><td class="right">1.3</td><td class="right">0.62</td></tr>
+        
+          <tr><td><code>moat</code></td><td class="right">1.0</td><td class="right">0.62</td></tr>
+        
+          <tr><td><code>risk</code></td><td class="right">0.8</td><td class="right">0.62</td></tr>
+        
+          <tr><td><code>team</code></td><td class="right">0.9</td><td class="right">0.62</td></tr>
+        
+          <tr><td><code>deployability</code></td><td class="right">1.0</td><td class="right">0.62</td></tr>
+        
+          <tr><td><code>total</code></td><td class="right">8.2</td><td class="right">0.62</td></tr>
+        
+        </tbody>
+      </table>
     </div>
   </section>
 
   <div class="pagebreak"></div>
 
-  <!-- ─────────────────────────────────────────────────────────────
-       [KO] 3) 축별 에비던스(근거)
-       - evidence_limit_per_axis 개수만 표시(기본 3개 가정)
-       - 출처 하이퍼링크/날짜/강도 라벨 포함
-  ───────────────────────────────────────────────────────────── -->
+  <!-- 근거(Evidence) -->
   <section>
     <h2>근거(Evidence by Axis)</h2>
-
     
-
     
       <div class="box mb12">
-        <h3>■ ai_tech — 점수 2.3 / 신뢰도 0.62</h3>
+        <h3>■ ai_tech — 점수 2.4 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill good">strong</span>
-                  
-                </td>
-                <td>금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill good">strong</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill good">strong</span>
-                  
-                </td>
-                <td>한국어 인식률 및 보안 인증에서 경쟁사 대비 우위.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -276,46 +140,16 @@
         <h3>■ market — 점수 1.8 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill warn">medium</span>
-                  
-                </td>
-                <td>국내 금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill warn">medium</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill warn">medium</span>
-                  
-                </td>
-                <td>한국어 인식률 및 보안 인증에서 경쟁사 대비 우위.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -323,49 +157,19 @@
       </div>
     
       <div class="box mb12">
-        <h3>■ traction — 점수 1.2 / 신뢰도 0.62</h3>
+        <h3>■ traction — 점수 1.3 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill warn">medium</span>
-                  
-                </td>
-                <td>국내 금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill warn">medium</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill warn">medium</span>
-                  
-                </td>
-                <td>경쟁사 대비 한국어 인식률 및 보안 인증 우위.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -376,46 +180,16 @@
         <h3>■ moat — 점수 1.0 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill warn">medium</span>
-                  
-                </td>
-                <td>금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill warn">medium</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill warn">medium</span>
-                  
-                </td>
-                <td>온프렘/VPC/PII 마스킹 보안 설계로 금융기관 대응.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -426,46 +200,16 @@
         <h3>■ risk — 점수 0.8 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill">weak</span>
-                  
-                </td>
-                <td>금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill">weak</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill">weak</span>
-                  
-                </td>
-                <td>한국어 인식률 및 보안 인증에서 경쟁사 대비 우위.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -476,46 +220,16 @@
         <h3>■ team — 점수 0.9 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill">weak</span>
-                  
-                </td>
-                <td>금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill">weak</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill">weak</span>
-                  
-                </td>
-                <td>한국어 인식률과 보안 인증에서 경쟁사 대비 우위.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -523,49 +237,19 @@
       </div>
     
       <div class="box mb12">
-        <h3>■ deployability — 점수 0.9 / 신뢰도 0.62</h3>
+        <h3>■ deployability — 점수 1.0 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill">weak</span>
-                  
-                </td>
-                <td>금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill warn">medium</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill">weak</span>
-                  
-                </td>
-                <td>한국어 인식률·보안 인증에서 경쟁사 대비 우위.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -573,49 +257,19 @@
       </div>
     
       <div class="box mb12">
-        <h3>■ total — 점수 8.1 / 신뢰도 0.62</h3>
+        <h3>■ total — 점수 8.2 / 신뢰도 0.62</h3>
         
           <table class="small">
-            <thead>
-              <tr>
-                <th style="width:18mm;">강도</th>
-                <th>텍스트</th>
-                <th style="width:40mm;">출처</th>
-                <th style="width:22mm;">날짜</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
-              
+            
               <tr>
-                <td>
-                  
-                    <span class="pill good">strong</span>
-                  
-                </td>
-                <td>금융 AI 시장 연평균 15% 성장.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
+                <td><span class="pill good">strong</span></td>
+                <td>핵심 근거 보강 필요</td>
+                <td><a href="-">link</a></td>
                 <td>-</td>
               </tr>
-              
-              <tr>
-                <td>
-                  
-                    <span class="pill good">strong</span>
-                  
-                </td>
-                <td>한국어 인식률·보안 인증에서 경쟁사 대비 우위.</td>
-                <td>
-                  
-                    <a href="-">link</a>
-                  
-                </td>
-                <td>-</td>
-              </tr>
-              
+            
             </tbody>
           </table>
           
@@ -626,15 +280,11 @@
 
   <div class="pagebreak"></div>
 
-  <!-- ─────────────────────────────────────────────────────────────
-       [KO] 4) 결론 및 권고사항
-       - INVEST/HOLD/CONDITIONAL에 따라 메시지 달리 출력 가능
-  ───────────────────────────────────────────────────────────── -->
+  <!-- 결론 -->
   <section>
     <h2>결론(Conclusion)</h2>
     
-      <p><strong class="good">투자 권장</strong>입니다. 총점 8.1이며, 신뢰도 평균이 기준을 충족합니다. 
-      후속 검토로는 계약/보안/데이터 경계(온프렘/리전) 확인을 권합니다.</p>
+      <p><strong class="good">투자 권장</strong>입니다. 총점 8.2이며, 신뢰도 평균이 기준을 충족합니다. 후속 검토로는 계약/보안/데이터 경계(온프렘/리전) 확인을 권합니다.</p>
     
     <p class="small muted">※ 본 보고서는 공개 자료 및 자동화된 RAG 기반 요약/평가에 근거하며, 최종 투자 의사결정은 별도의 실사(DD) 절차를 필요로 합니다.</p>
   </section>
