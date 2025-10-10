@@ -113,4 +113,3 @@ python scripts/make_report.py --company "FinChat AI" --out outputs/reports/FinCh
 * **Agentic RAG v2**: 단계별 모듈화 + 병렬 확장 + 조건부 PDF
 * **OpenAI + Chroma(로컬)**: 셋업 간소화/온보딩 빠름
 * **투자 가치가 있는 결과만 출력**해 리소스와 품질을 동시에 관리
-
