@@ -17,23 +17,18 @@ dependencies = [
   "openai>=1.50.0",
   "langgraph>=0.6.9",
   "langchain>=0.3.0",
-
   # --- Vector DB (로컬) ---
   "chromadb>=1.1.1",
-
   # --- Crawling/Parsing ---
   "requests>=2.32.0",
   "beautifulsoup4>=4.14.0",
   "pdfplumber>=0.11.0",
   "pymupdf>=1.26.0",
-
   # --- Data/Vis ---
   "pandas>=2.2.0",
   "matplotlib>=3.9.0",
-
   # --- PDF Rendering (HTML→PDF) ---
   "weasyprint>=61.0",
-
   # --- CLI/Logging UX ---
   "rich>=13.7.0",
   "pydantic>=2.8.0",
