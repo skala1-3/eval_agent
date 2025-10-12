@@ -1,4 +1,4 @@
-# agents/scoring_agent.py (수정 완료)
+# agents/scoring_agent.py
 # Agentic RAG v2 – ScoringAgent (patched)
 # - 7축 점수 산출, confidence 계산, total/decision 결정
 # - 엄밀 매칭: 회사 공식 도메인 / 텍스트·URL 경로 회사명 / market 축 태그 특례
@@ -24,9 +24,6 @@ logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
 # 설정 상수
-# ... (설정 상수 및 유틸 함수는 이전과 동일) ...
-# AXIS_WEIGHTS, STRENGTH_BONUS, ... , _score_axis 함수까지는 변경 없습니다.
-# _gather_company_axis_evidence 와 _matches_company 함수는 이제 사용되지 않으므로 삭제해도 됩니다.
 # ─────────────────────────────────────────────────────────────
 
 AXIS_WEIGHTS: Dict[EvidenceCategory, int] = {
@@ -83,6 +80,49 @@ def _within_recency(iso_date: Optional[str], months: int) -> bool:
     except Exception:
         return False
     return (datetime.now() - dt) <= timedelta(days=30 * months)
+
+
+# ─────────────────────────────────────────────────────────────
+# 매칭 로직 (엄밀)
+#   1) 회사 공식 도메인
+#   2) 텍스트/URL 경로에 회사명(슬러그) 포함
+#   3) market 축 특례: 세그먼트 태그 매칭(간접 근거)
+# ─────────────────────────────────────────────────────────────
+
+
+def _matches_company(
+    e: Evidence,
+    company_name: str,
+    website: Optional[str],
+    tags: Optional[List[str]] = None,
+) -> bool:
+    domain = _domain_of(e.source)
+    parsed = urlparse(e.source)
+    path = (parsed.path or "").lower()
+    text = f"{e.text or ''} {e.source or ''}"
+    name_slug = _slug(company_name)
+    path_slug = _slug(path.replace("-", "").replace("_", ""))
+
+    # 1) 회사 공식 도메인 매칭 (가장 강함)
+    if website:
+        site = _domain_of(website)
+        if site and (domain == site or domain.endswith("." + site) or site in domain):
+            return True
+
+    # 2) 명시 언급(텍스트·URL 경로)
+    if company_name and (
+        company_name.lower() in text.lower()  # "FinChat" 직접 언급
+        or (name_slug and name_slug in path_slug)  # /.../finchatai/...
+    ):
+        return True
+
+    # 3) 시장 축 특례: 세그먼트 태그 매칭 (간접 근거 허용)
+    if e.category == "market" and tags:
+        if _contains_any(text, tags):
+            return True
+
+    return False
+
 
 # ─────────────────────────────────────────────────────────────
 # confidence 계산
@@ -151,6 +191,25 @@ def _score_axis(axis_evs: List[Evidence]) -> Tuple[float, str]:
     notes = f"{len(axis_evs)} evidences, domains={len({ _domain_of(e.source) for e in axis_evs })}"
     return round(value, 2), notes
 
+
+# ─────────────────────────────────────────────────────────────
+# 회사별 축 그룹핑 (tags 전달)
+# ─────────────────────────────────────────────────────────────
+
+
+def _gather_company_axis_evidence(
+    all_chunks: List[Evidence],
+    company_name: str,
+    website: Optional[str],
+    tags: Optional[List[str]],
+) -> Dict[EvidenceCategory, List[Evidence]]:
+    by_axis: Dict[EvidenceCategory, List[Evidence]] = defaultdict(list)
+    for e in all_chunks:
+        if _matches_company(e, company_name, website, tags):
+            by_axis[e.category].append(e)
+    return by_axis
+
+
 # ─────────────────────────────────────────────────────────────
 # 의사결정
 # ─────────────────────────────────────────────────────────────
@@ -176,27 +235,26 @@ def _decide(total: float, items: List[ScoreItem]) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# 메인 에이전트 (이 부분이 수정됩니다)
+# 메인 에이전트
 # ─────────────────────────────────────────────────────────────
 
 
 class ScoringAgent:
-    """Compute 7-axis scores, confidence, total, and decision per company."""
+    """Compute 7-axis scores, confidence, total, and decision per company (patched)."""
 
     def __call__(self, state: PipelineState) -> PipelineState:
-        if not state.companies or not state.retrieved_evidence:
-            logger.warning("ScoringAgent: No companies or retrieved_evidence to score.")
+        if not state.companies:
             return state
 
         scorecards: Dict[str, ScoreCard] = {}
-        
-        # RAGRetrieverAgent의 결과물을 가져옵니다.
-        all_retrieved_evidence = state.retrieved_evidence
 
         for company in state.companies:
-            # <<-- 수정된 부분 1: state.chunks 대신 state.retrieved_evidence 사용
-            #    이제 _gather_company_axis_evidence 함수는 필요 없습니다.
-            axis_map = all_retrieved_evidence.get(company.id, {})
+            axis_map = _gather_company_axis_evidence(
+                state.chunks,
+                company.name,
+                getattr(company, "website", None),
+                getattr(company, "tags", []),
+            )
 
             items: List[ScoreItem] = []
             for axis in AXIS_WEIGHTS.keys():
@@ -211,13 +269,14 @@ class ScoringAgent:
                         value=value,
                         confidence=round(conf, 3),
                         notes=notes,
-                        evidence=evs,  # <<-- 수정된 부분 2: 검색된 근거를 그대로 ScoreItem에 포함
+                        evidence=evs,
                     )
                 )
 
             total = _weighted_total(items)
             decision = _decide(total, items)
 
+            # 디버그 로그(선택): 어떤 축이 몇 개 매칭됐는지 확인할 때 사용
             logger.debug(
                 "[Scoring] %s → total=%.2f, decision=%s, axis_counts=%s",
                 company.name,
@@ -229,8 +288,8 @@ class ScoringAgent:
             scorecards[company.id] = ScoreCard(items=items, total=total, decision=decision)
 
         state.scorecard.update(scorecards)
-        logger.info(f"✅ Scoring complete for {len(scorecards)} companies.")
         return state
+
 
 """
 python graph/run.py --query "AI financial advisory"

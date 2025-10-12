@@ -20,9 +20,7 @@ import logging
 try:
     from langgraph.graph import StateGraph, END
 except Exception as e:  # pragma: no cover
-    raise RuntimeError(
-        "[graph/graph.py] LangGraph import failed. Please install langgraph."
-    ) from e
+    raise RuntimeError("[graph/graph.py] LangGraph import failed. Please install langgraph.") from e
 
 # Shared state
 from .state import PipelineState
@@ -87,9 +85,7 @@ def load_nodes() -> dict[str, Callable[[PipelineState], PipelineState]]:
         "augment": _resolve_agent("augment", "agents.augment_agent.AugmentAgent"),
         "rag": _resolve_agent("rag", "agents.rag_retriever_agent.RAGRetrieverAgent"),
         "scoring": _resolve_agent("scoring", "agents.scoring_agent.ScoringAgent"),
-        "report": _resolve_agent(
-            "report", "agents.report_writer_agent.ReportWriterAgent"
-        ),
+        "report": _resolve_agent("report", "agents.report_writer_agent.ReportWriterAgent"),
     }
 
 
@@ -144,3 +140,19 @@ def run_step_by_step(state: PipelineState) -> PipelineState:
     for key in ("seraph", "filter", "augment", "rag", "scoring", "report"):
         state = nodes[key](state)
     return state
+
+
+"""
+python graph/run.py --query "AI financial advisory"
+
+이 방식은 run.py를 단독 스크립트로 실행하는 거라,
+Python이 “graph는 패키지가 아니라 그냥 폴더잖아?”라고 인식하게 됩니다.
+→ 그래서 상대 임포트(from .graph import ...)가 실패합니다.
+=================================================================
+python -m graph.run --query "AI financial advisory"
+
+-m 옵션은 “모듈로 실행”을 의미합니다.
+이렇게 하면 Python이 eval_agent 폴더를 패키지 루트로 인식해서
+from .graph import ... 같은 상대 임포트가 정상 작동합니다.
+
+"""
