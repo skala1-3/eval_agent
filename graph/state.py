@@ -102,6 +102,12 @@ class PipelineState(BaseModel):
     # [KO] Augment 단계 결과: 크롤링/정제/라벨링 후 적재된 근거(청크) 풀
     chunks: List[Evidence] = Field(default_factory=list)
 
+    # [KO] Retriever 단계 결과: 회사별/축별로 검색된 근거 목록 (key: company_id)
+    retrieved_evidence: Dict[str, Dict[str, List[Evidence]]] = Field(
+        default_factory=dict,
+        description="Retrieved evidences per company_id and evaluation axis",
+    )
+
     # [KO] Scoring 단계 결과: 회사별 ScoreCard (key: company_id)
     scorecard: Dict[str, ScoreCard] = Field(default_factory=dict)
 
