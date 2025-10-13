@@ -54,7 +54,7 @@ def load_nodes() -> dict[str, Callable[[PipelineState], PipelineState]]:
     """Resolve all pipeline nodes (real agent or fallback)."""
     return {
         "seraph": _resolve_agent("seraph", "agents.seraph_agent.SeraphAgent"),
-        "filter": _resolve_agent("filter", "agents.seraph_agent.FilterAgent"),
+        "filter": _resolve_agent("filter", "agents.filter_agent.FilterAgent"),
         "augment": _resolve_agent("augment", "agents.augment_agent.AugmentAgent"),
         "rag": _resolve_agent("rag", "agents.rag_retriever_agent.RAGRetrieverAgent"),
         "scoring": _resolve_agent("scoring", "agents.scoring_agent.ScoringAgent"),

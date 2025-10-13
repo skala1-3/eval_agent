@@ -1,7 +1,8 @@
+# agents/report_writer_agent.py
 # Consulting-style ReportWriterAgent
-# - Executive Summary / Competitive Position / Risk & Considerations / Investment Outlook 추가
-# - Jinja2 템플릿(report.html.j2)와 호환
+# - Executive Summary / Competitive Position / Risk & Considerations / Investment Outlook
 # - Evidence/Notes 길이 제한, PDF scale, OpenAI 호출 안전화(실패시 대체문구)
+# - 축별 카드에 ScoringAgent의 실제 Evidence(강도/텍스트/출처/날짜) 반영
 
 import os, re, json, asyncio, logging
 from datetime import datetime
@@ -100,7 +101,13 @@ class ReportWriterAgent:
         self.ev_len = 90
         self.ev_limit = 3
 
+        # 파이프라인 state 참조 (evidence 접근용)
+        self._pipeline_state_ref: PipelineState | None = None
+
     def __call__(self, state: PipelineState) -> PipelineState:
+        # 전체 state 보관
+        self._pipeline_state_ref = state
+
         for company in state.companies:
             sc = state.scorecard.get(company.id)
             if not sc or sc.decision != "invest":
@@ -113,6 +120,7 @@ class ReportWriterAgent:
                 conf_mean = sum(it.confidence for it in sc.items) / len(sc.items)
 
             payload = {
+                "company_id": company.id,  # ← id 전달
                 "company_name": company.name,
                 "company_meta": company.model_dump(),
                 "fae_score": fae_items,
@@ -183,7 +191,13 @@ class ReportWriterAgent:
 
         consulting = await self._gen_consulting_sections(company_obj, axes, total, mean_conf, blob)
 
+        # 실제 Evidence 반영
         normalized_items: List[Dict[str, Any]] = []
+        company_id = state.get("company_id")
+        sc_obj = None
+        if self._pipeline_state_ref and company_id:
+            sc_obj = self._pipeline_state_ref.scorecard.get(company_id)
+
         for key, label in [
             ("ai_tech", "AI Tech"),
             ("market", "Market"),
@@ -196,14 +210,34 @@ class ReportWriterAgent:
         ]:
             score = total if key == "total" else axes.get(key, 0.0)
             notes = f"{label} 지표는 {score:.2f} 수준."
-            ev_rows = [
-                {
-                    "strength": strength_from_score(score),
-                    "text": "핵심 근거 보강 필요",
-                    "source": "-",
-                    "published": "-",
-                }
-            ]
+            ev_rows = []
+
+            if sc_obj and key != "total":
+                try:
+                    item = next((i for i in sc_obj.items if i.key == key), None)
+                    if item and item.evidence:
+                        for e in item.evidence[: self.ev_limit]:
+                            ev_rows.append(
+                                {
+                                    "strength": getattr(e, "strength", strength_from_score(score)),
+                                    "text": truncate(getattr(e, "text", ""), self.ev_len),
+                                    "source": getattr(e, "source", "-") or "-",
+                                    "published": getattr(e, "published", "-") or "-",
+                                }
+                            )
+                except Exception:
+                    pass
+
+            if not ev_rows:
+                ev_rows = [
+                    {
+                        "strength": strength_from_score(score),
+                        "text": "핵심 근거 보강 필요",
+                        "source": "-",
+                        "published": "-",
+                    }
+                ]
+
             normalized_items.append(
                 {
                     "key": key,
@@ -297,6 +331,7 @@ if __name__ == "__main__":
     agent = ReportWriterAgent()
 
     dummy_state = {
+        "company_id": "demo_1",
         "company_name": "FinChat AI",
         "company_meta": {
             "website": "https://finchat.ai",

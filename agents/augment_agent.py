@@ -1,3 +1,4 @@
+# agents/augment_agent.py
 import os
 import json
 import requests
@@ -9,6 +10,8 @@ import chromadb
 from urllib.parse import urljoin, urlparse
 import io
 import time
+import re
+import json as pyjson
 from dotenv import load_dotenv
 
 from graph.state import Evidence, PipelineState
@@ -78,6 +81,8 @@ class AugmentAgent:
     """
     회사 웹/사이트맵/화이트리스트 외부 링크까지 확장 수집 → 임베딩 → Chroma 저장.
     Evidence는 state.chunks에도 누적.
+    - 게시일 추출(HTML meta, <time>)
+    - 회사 메타(founded_year/stage/headcount/region) 추정 후 state.companies 갱신
     """
 
     def __init__(self, openai_api_key: str | None = None, db_path: str | None = None):
@@ -137,7 +142,7 @@ class AugmentAgent:
                 crawled_count += 1
                 print(f"[{crawled_count}/{crawl_limit_per_company}] 크롤링 중: {url}")
                 try:
-                    raw_text, new_links = self._fetch_and_extract(url)
+                    raw_text, new_links = self._fetch_and_extract(url, company_id=company_id)
                     if raw_text:
                         enriched = self._process_and_enrich(
                             raw_text, url, company_name, company_id, base_site=initial_url
@@ -193,6 +198,7 @@ class AugmentAgent:
         u = urlparse(link).netloc
         return any(u == d or u.endswith("." + d) for d in ALLOWED_EXTERNAL_DOMAINS)
 
+    # -------------------- 게시일/회사 메타 추출 --------------------
     def _extract_published(self, soup: BeautifulSoup) -> str | None:
         """
         간단한 게시일 추출:
@@ -217,7 +223,103 @@ class AugmentAgent:
             pass
         return None
 
-    def _fetch_and_extract(self, url):
+    def _parse_company_meta_from_html(self, html: str) -> dict:
+        """schema.org JSON-LD + 휴리스틱으로 회사 메타 추출"""
+        out = {"founded_year": None, "stage": None, "headcount": None, "region": None}
+        if not html:
+            return out
+
+        # JSON-LD
+        for m in re.finditer(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            html,
+            re.S | re.I,
+        ):
+            try:
+                data = pyjson.loads(m.group(1))
+                cand = data if isinstance(data, list) else [data]
+                for obj in cand:
+                    if not isinstance(obj, dict):
+                        continue
+                    if obj.get("@type") in ("Organization", "Corporation", "LocalBusiness"):
+                        fd = obj.get("foundingDate") or obj.get("foundingYear")
+                        if fd:
+                            mY = re.search(r"(\d{4})", str(fd))
+                            if mY:
+                                out["founded_year"] = int(mY.group(1))
+                        # 직원 수
+                        emp = (
+                            obj.get("numberOfEmployees")
+                            or obj.get("employee")
+                            or obj.get("employees")
+                        )
+                        if isinstance(emp, (int, float)):
+                            out["headcount"] = int(emp)
+                        elif isinstance(emp, str):
+                            mN = re.search(r"(\d{1,5})", emp.replace(",", ""))
+                            if mN:
+                                out["headcount"] = int(mN.group(1))
+                        # 주소/지역
+                        addr = obj.get("address")
+                        if isinstance(addr, dict):
+                            region = addr.get("addressRegion") or addr.get("addressCountry")
+                            if region:
+                                out["region"] = str(region)
+            except Exception:
+                pass
+
+        # 휴리스틱: founded
+        m = re.search(r"(founded|established)\s+in\s+(\d{4})", html, re.I)
+        if m and not out["founded_year"]:
+            out["founded_year"] = int(m.group(2))
+
+        # headcount 휴리스틱
+        m = re.search(r"(\d{1,4})\s*-\s*(\d{1,4})\s*(employees|명)", html, re.I)
+        if m and not out["headcount"]:
+            lo, hi = int(m.group(1)), int(m.group(2))
+            out["headcount"] = int((lo + hi) / 2)
+        else:
+            m2 = re.search(r"(\d{1,4})\s*(employees|명)", html, re.I)
+            if m2 and not out["headcount"]:
+                out["headcount"] = int(m2.group(1))
+
+        # region 휴리스틱
+        if not out["region"]:
+            m = re.search(
+                r"(Seoul|Korea|KR|San Francisco|NY|London|SG|Singapore|Tokyo|JP)", html, re.I
+            )
+            if m:
+                out["region"] = m.group(1)
+
+        # stage는 공개 데이터에서 드물게 노출 → 간단 매핑
+        if not out["stage"]:
+            m = re.search(r"(Pre-Seed|Seed|Series\s*A|Series\s*B|Series\s*C)", html, re.I)
+            if m:
+                out["stage"] = m.group(1)
+
+        return out
+
+    def _maybe_fill_company_meta(self, company_id: str, html_bytes: bytes | str):
+        """state.companies 에 존재하는 None 필드만 채움"""
+        html = html_bytes
+        if isinstance(html_bytes, bytes):
+            try:
+                html = html_bytes.decode("utf-8", "ignore")
+            except Exception:
+                html = html_bytes.decode("latin-1", "ignore")
+        meta = self._parse_company_meta_from_html(html or "")
+        if self._state_ref:
+            for i, c in enumerate(self._state_ref.companies):
+                if c.id == company_id:
+                    upd = c.model_dump()
+                    for k in ("founded_year", "stage", "headcount", "region"):
+                        if upd.get(k) in (None, "", 0) and meta.get(k) not in (None, "", 0):
+                            upd[k] = meta.get(k)
+                    self._state_ref.companies[i] = type(c)(**upd)
+                    break
+
+    # -------------------- Fetch/Extract --------------------
+    def _fetch_and_extract(self, url, company_id: str | None = None):
         r = requests.get(url, headers=self.headers, timeout=20)
         r.raise_for_status()
         ctype = r.headers.get("content-type", "").lower()
@@ -226,6 +328,12 @@ class AugmentAgent:
         text, links = "", []
         if "html" in ctype:
             soup = BeautifulSoup(r.content, "html.parser")
+            # 회사 메타 갱신 시도 (초기 몇 페이지에서만 해도 효과 있음)
+            if company_id:
+                try:
+                    self._maybe_fill_company_meta(company_id, r.content)
+                except Exception:
+                    pass
             # main/article 우선
             main = soup.find("main") or soup.find("article") or soup.find("body")
             if main:
