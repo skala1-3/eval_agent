@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict, Counter
 from urllib.parse import urlparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from graph.state import (
@@ -75,14 +75,30 @@ def _contains_any(text: str, keywords: List[str]) -> bool:
     return any((kw or "").lower() in t for kw in keywords if kw)
 
 
+# 기존 _within_recency 함수 전체를 아래로 교체
 def _within_recency(iso_date: Optional[str], months: int) -> bool:
+    """
+    True if `iso_date` is within `months` months from now.
+    - 모든 비교는 UTC-aware datetime으로 정규화해서 수행.
+    - ISO 문자열에 'Z'가 있으면 '+00:00'으로 치환하여 fromisoformat 호환.
+    """
     if not iso_date:
         return False
     try:
-        dt = datetime.fromisoformat(iso_date.replace("Z", ""))
+        s = iso_date.strip()
+        # '...Z' → '+00:00' 로 치환 (fromisoformat 호환)
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        # aware/naive 모두 UTC aware 로 정규화
+        if dt.tzinfo is None:
+            dt_utc = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt_utc = dt.astimezone(timezone.utc)
+        now_utc = datetime.now(timezone.utc)
+        return (now_utc - dt_utc) <= timedelta(days=30 * months)
     except Exception:
         return False
-    return (datetime.now() - dt) <= timedelta(days=30 * months)
 
 
 # ─────────────────────────────────────────────────────────────

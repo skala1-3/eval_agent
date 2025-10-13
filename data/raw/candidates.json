@@ -1,8 +1,8 @@
 [
   {
     "id": "cand_01",
-    "name": "PortfolioPilot: AI-powered financial advisor has $20 billion ...",
-    "website": "https://www.cnbc.com/2024/07/31/portfoliopilot-ai-powered-financial-advisor-has-20-billion-in-assets.html",
+    "name": "Cnbc",
+    "website": "https://www.cnbc.com",
     "founded_year": null,
     "stage": null,
     "headcount": null,
@@ -13,98 +13,14 @@
   },
   {
     "id": "cand_02",
-    "name": "Tendi | Your Personal AI Financial Advisor",
-    "website": "https://tendi.ai/",
+    "name": "Tendi",
+    "website": "https://tendi.ai",
     "founded_year": null,
     "stage": null,
     "headcount": null,
     "region": null,
     "tags": [
       "Tendi is an AI-powered personal financial advisor that helps you understand, plan, and achieve your financial goals with ease."
-    ]
-  },
-  {
-    "id": "cand_03",
-    "name": "PortfolioPilot: AI Financial Advisor for Smarter Investing",
-    "website": "https://portfoliopilot.com/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "PortfolioPilot helps you track your investments, optimize taxes, and get AI-powered financial guidance. Free to start and built for long-term investors."
-    ]
-  },
-  {
-    "id": "cand_04",
-    "name": "Zocks | The AI Assistant for Financial Advisors | AI Software for ...",
-    "website": "https://www.zocks.io/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "Save 10+ hours a week with AI. Thousands of financial advisors & wealth managers use Zocks to automate note-taking, client emails, intake forms & more."
-    ]
-  },
-  {
-    "id": "cand_05",
-    "name": "Origin Financial | All‑in‑One Financial Platform for Budgeting ...",
-    "website": "https://useorigin.com/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "Origin is your personal AI Financial Advisor. Track your spending, investments, net worth and optimize your financial future—all in one place. Get Started."
-    ]
-  },
-  {
-    "id": "cand_06",
-    "name": "AI Financial Advisers Target Young People Living ...",
-    "website": "https://www.wired.com/story/ai-financial-advisers-apps-chatbots/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "AI finance apps are reaching Gen Z and millennial users with personalized chatbots that offer money advice—and upsell them big-time."
-    ]
-  },
-  {
-    "id": "cand_07",
-    "name": "AI could make financial advice more equitable and resilient",
-    "website": "https://www.weforum.org/stories/2025/06/ai-financial-advice-accessible/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "Artificial intelligence can help advisers give more holistic financial advice or support people researching their own savings and investment ..."
-    ]
-  },
-  {
-    "id": "cand_08",
-    "name": "Meet HUB, Your Ultimate AI Financial Advisor",
-    "website": "https://hub-analytics.com/blog/ai-financial-advisor/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "Discover how HUB Analytics leverages AI as your financial advisor for insightful analysis and reporting on client businesses."
-    ]
-  },
-  {
-    "id": "cand_09",
-    "name": "AI Assistant for Financial Advisors | Jump AI | Jump",
-    "website": "https://jump.ai/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "Jump is an AI-powered assistant for financial advisors that automates key tasks, improves compliance, reduces risk exposure, and more. Start a free trial today."
     ]
   }
 ]

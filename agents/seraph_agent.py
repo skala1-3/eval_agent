@@ -1,25 +1,48 @@
-# agents/seraph_agent.py (SerpApi 버전 + JSON 저장 + LangGraph 호환)
-import os, json, logging
+import os, json, logging, requests
 from serpapi import GoogleSearch
 from dotenv import load_dotenv
 from typing import List, Dict, Any
+from urllib.parse import urlparse
+
 from graph.state import PipelineState, CompanyMeta
 
-# ────────────────────────────────────────────────
-# 로깅 설정
-# ────────────────────────────────────────────────
+TAVILY_ENDPOINT = "https://api.tavily.com/search"
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+def _root_origin(u: str) -> str:
+    try:
+        p = urlparse(u)
+        if not p.scheme or not p.netloc:
+            return u
+        return f"{p.scheme}://{p.netloc}"
+    except Exception:
+        return u
+
+
+def _infer_company_name(title: str, url: str) -> str:
+    """
+    검색 결과의 장문 타이틀에서 노이즈 제거.
+    - ' | ' 또는 ' – ' 구분자를 기준으로 좌측 토큰 우선
+    - 도메인 루트의 호스트명을 참고 (예: finchat.ai -> Finchat)
+    """
+    host = (urlparse(url).netloc or "").split(":")[0]
+    host_core = host.split(".")[-2] if "." in host else host
+    host_guess = host_core.capitalize() if host_core else ""
+    cand = title.split(" | ")[0].split(" – ")[0].strip() or host_guess
+    return cand if 1 <= len(cand) <= 50 else host_guess
 
 
 class SeraphAgent:
     def __init__(self):
         load_dotenv()
         self.api_key = os.getenv("SERPAPI_KEY")
+        self.tavily_key = os.getenv("TAVILY_API_KEY")
         if not self.api_key:
             raise ValueError("❌ SERPAPI_KEY not found in .env file")
 
-    def _search_google(self, query: str, num_results: int = 20) -> List[Dict[str, Any]]:
-        """SerpApi를 이용해 AI 금융 스타트업 후보 검색"""
+    def _search_google(self, query: str, num_results: int = 2) -> List[Dict[str, Any]]:
         logging.info(f"🔍 Searching Google (via SerpApi) for: {query}")
         search = GoogleSearch(
             {
@@ -27,39 +50,58 @@ class SeraphAgent:
                 "num": num_results,
                 "hl": "en",
                 "engine": "google",
-                "google_domain": "google.com",  # 추가
-                "safe": "off",
                 "api_key": self.api_key,
             }
         )
+        results = search.get_dict().get("organic_results", [])
+        # 정규화: 홈 도메인/이름, 중복 도메인 제거
+        cleaned = []
+        for r in results:
+            link = r.get("link")
+            title = r.get("title", "") or ""
+            if not link:
+                continue
+            website = _root_origin(link)
+            name = _infer_company_name(title, link)
+            cleaned.append({"name": name, "url": website, "summary": r.get("snippet", "")})
+        seen = set()
+        uniq = []
+        for c in cleaned:
+            host = urlparse(c["url"]).netloc
+            if host in seen:
+                continue
+            seen.add(host)
+            uniq.append(c)
+        return uniq
 
-        raw = search.get_dict()
-
-        # ─ 추가: 메타/에러 확인용 로그
-        meta = raw.get("search_metadata", {})
-        status = meta.get("status")
-        err = raw.get("error")
-        if err:
-            logging.warning(f"SerpApi error: {err}")
-        logging.info(
-            f"SerpApi status={status}, total_results={len(raw.get('organic_results', []))}"
-        )
-
-        results = raw.get("organic_results", []) or []
-        return [
-            {"name": r.get("title", ""), "url": r.get("link", ""), "summary": r.get("snippet", "")}
-            for r in results
-            if r.get("link")
-        ]
+    def _tavily_seed(self, query: str, max_results: int = 12) -> List[str]:
+        if not self.tavily_key:
+            return []
+        try:
+            r = requests.post(
+                TAVILY_ENDPOINT,
+                json={
+                    "api_key": self.tavily_key,
+                    "query": query,
+                    "search_depth": "basic",
+                    "include_answer": False,
+                    "max_results": max_results,
+                },
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            urls = [x["url"] for x in data.get("results", []) if x.get("url")]
+            return urls
+        except Exception as e:
+            logging.warning(f"[Seraph] tavily seed error: {e}")
+            return []
 
     def __call__(self, state: PipelineState) -> PipelineState:
-        """LangGraph에서 실행될 메인 호출 함수"""
-        logging.info("--- 🚀 Starting SeraphAgent (SerpApi-Google) ---")
-
-        # 1️⃣ 검색 수행
+        logging.info("--- 🚀 Starting SeraphAgent (SerpApi+Tavily) ---")
         raw = self._search_google(state.query)
 
-        # 2️⃣ 검색 결과를 CompanyMeta로 매핑
+        # candidates
         company_metas = [
             CompanyMeta(
                 id=f"cand_{i+1:02d}",
@@ -69,37 +111,30 @@ class SeraphAgent:
             )
             for i, c in enumerate(raw)
         ]
-
-        # 3️⃣ state 업데이트
         state.companies = company_metas
         logging.info(f"✅ Retrieved {len(company_metas)} candidates from Google search.")
 
-        # 4️⃣ 결과 저장 (data/raw/candidates.json)
+        # 저장(+보조 시드 urls.json)
         try:
-            # run.py 실행 환경에서도 안정적으로 경로 인식
             project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-            output_dir = os.path.join(project_root, "data", "raw")
-            os.makedirs(output_dir, exist_ok=True)
-            output_path = os.path.join(output_dir, "candidates.json")
-
-            with open(output_path, "w", encoding="utf-8") as f:
+            raw_dir = os.path.join(project_root, "data", "raw")
+            os.makedirs(raw_dir, exist_ok=True)
+            with open(os.path.join(raw_dir, "candidates.json"), "w", encoding="utf-8") as f:
                 json.dump([c.model_dump() for c in company_metas], f, indent=2, ensure_ascii=False)
 
-            logging.info(f"💾 Saved candidates to {output_path}")
-
+            if self.tavily_key:
+                extra = self._tavily_seed(state.query, max_results=12)
+                with open(os.path.join(raw_dir, "seed_urls.json"), "w", encoding="utf-8") as f:
+                    json.dump(extra, f, indent=2, ensure_ascii=False)
+                logging.info(f"💾 Saved seed_urls.json ({len(extra)} urls)")
         except Exception as e:
-            logging.error(f"⚠️ Failed to save candidates.json: {e}")
+            logging.error(f"⚠️ Failed to save raw files: {e}")
 
         return state
 
 
-# ────────────────────────────────────────────────
-# 독립 실행 (테스트용)
-# ────────────────────────────────────────────────
 if __name__ == "__main__":
-    # 단독 테스트 시: state 객체 생성 → 실행
     test_state = PipelineState(query="AI fintech robo-advisory wealth management startup")
-    test_agent = SeraphAgent()
-    final_state = test_agent(test_state)
-
+    agent = SeraphAgent()
+    final_state = agent(test_state)
     print(f"✅ {len(final_state.companies)} candidates saved to data/raw/candidates.json")

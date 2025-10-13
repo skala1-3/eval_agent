@@ -1,4 +1,3 @@
-# agents/report_writer_agent.py
 # Consulting-style ReportWriterAgent
 # - Executive Summary / Competitive Position / Risk & Considerations / Investment Outlook 추가
 # - Jinja2 템플릿(report.html.j2)와 호환
@@ -16,7 +15,6 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from graph.state import PipelineState
 
 
-# ---------------- Utils ----------------
 def as_float(x: Any, default: float = 0.0) -> float:
     try:
         if isinstance(x, (int, float)):
@@ -50,7 +48,6 @@ def strength_from_score(v: float) -> str:
     return "weak"
 
 
-# ---------------- Consulting System Prompt ----------------
 SYSTEM_PROMPT = """
 당신은 VC/전략 컨설턴트입니다. 기업 데이터를 분석해 **투자·컨설팅용 보고서**를 작성합니다.
 
@@ -78,7 +75,6 @@ SYSTEM_PROMPT = """
 """
 
 
-# ---------------- Agent ----------------
 class ReportWriterAgent:
     def __init__(
         self,
@@ -100,19 +96,16 @@ class ReportWriterAgent:
         self.llm = ChatOpenAI(model=model, temperature=0.4)
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
-        # 표시 길이 정책(가독성)
         self.notes_len = 140
         self.ev_len = 90
         self.ev_limit = 3
 
     def __call__(self, state: PipelineState) -> PipelineState:
-        # scorecard 순회, invest만 생성
         for company in state.companies:
             sc = state.scorecard.get(company.id)
             if not sc or sc.decision != "invest":
                 continue
 
-            # 기존 run()이 기대하는 dict로 최소 컨텍스트 어댑트
             fae_items = {it.key: it.value for it in sc.items}
             fae_items["total"] = sc.total
             conf_mean = 0.0
@@ -178,7 +171,6 @@ class ReportWriterAgent:
             "deployability": as_float(fae.get("deployability"), 0.0),
         }
 
-        # 전역 텍스트 블롭(LLM 컨텍스트)
         blob = "\n".join(
             [
                 state.get("startup_summary", ""),
@@ -189,10 +181,8 @@ class ReportWriterAgent:
             ]
         )
 
-        # 1) 컨설팅형 본문 생성
         consulting = await self._gen_consulting_sections(company_obj, axes, total, mean_conf, blob)
 
-        # 2) 점수표 아이템(템플릿 표/카드 호환)
         normalized_items: List[Dict[str, Any]] = []
         for key, label in [
             ("ai_tech", "AI Tech"),
@@ -230,7 +220,6 @@ class ReportWriterAgent:
             "generated_at": state.get("generated_at") or datetime.now().strftime("%Y-%m-%d %H:%M"),
             "evidence_limit_per_axis": self.ev_limit,
             "scorecard": {"total": total, "decision": "invest", "items": normalized_items},
-            # 새 섹션(템플릿에서 표시)
             "exec_summary": consulting["exec_summary"],
             "position_points": consulting["position_points"],
             "risks": consulting["risks"],
@@ -261,7 +250,6 @@ total={total:.2f}, confidence={conf:.2f}
             res = await self.llm.ainvoke([sys, user])
             j = json.loads(res.content)
         except Exception:
-            # LLM 실패 시 최소 구조 보장
             j = {
                 "exec_summary": f"{company.get('name','기업')}은(는) 총점 {total:.2f}로 투자 권장 수준입니다. "
                 f"핵심 지표의 신뢰도는 {conf:.2f}입니다.",
@@ -274,7 +262,6 @@ total={total:.2f}, confidence={conf:.2f}
                 "outlook": "단기적으로는 레퍼런스 확보 및 ARR 가시화, 중기적으로는 파트너십/리전 확장 권장.",
             }
 
-        # 길이/개수 정규화
         j["exec_summary"] = truncate(j.get("exec_summary", ""), 900)
         j["outlook"] = truncate(j.get("outlook", ""), 900)
         j["position_points"] = [truncate(s, 160) for s in (j.get("position_points") or [])][:6] or [
@@ -291,7 +278,7 @@ total={total:.2f}, confidence={conf:.2f}
             f.write(html)
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
+            browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
             page = await browser.new_page()
             await page.goto(f"file://{os.path.abspath(html_path)}")
             await page.pdf(
@@ -305,7 +292,6 @@ total={total:.2f}, confidence={conf:.2f}
         return html_path, pdf_path
 
 
-# ---------------- Quick Run ----------------
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     agent = ReportWriterAgent()

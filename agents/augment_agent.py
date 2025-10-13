@@ -1,4 +1,3 @@
-# agents/augment_agent.py
 import os
 import json
 import requests
@@ -15,10 +14,70 @@ from dotenv import load_dotenv
 from graph.state import Evidence, PipelineState
 
 
+ALLOWED_EXTERNAL_DOMAINS = {
+    # 신뢰 언론/테크/산업
+    "cnbc.com",
+    "bloomberg.com",
+    "reuters.com",
+    "ft.com",
+    "techcrunch.com",
+    "wired.com",
+    "theverge.com",
+    "forbes.com",
+    "wsj.com",
+    # 규제/공시
+    "sec.gov",
+    "fca.org.uk",
+    "mas.gov.sg",
+    "europa.eu",
+    # 파트너/생태계 (예시)
+    "salesforce.com",
+    "appexchange.salesforce.com",
+    "stripe.com",
+}
+ALLOWED_PATH_HINTS = (
+    "/blog",
+    "/news",
+    "/press",
+    "/case",
+    "/stories",
+    "/resource",
+    "/whitepaper",
+    "/report",
+)
+
+# 간이 축별 키워드(라벨러)
+AXIS_HINTS = {
+    "ai_tech": [
+        "model",
+        "fine-tune",
+        "benchmark",
+        "agent",
+        "retrieval",
+        "latency",
+        "embedding",
+        "LLM",
+        "RAG",
+    ],
+    "market": ["market", "segment", "customers", "advisors", "AUM", "TAM", "growth"],
+    "traction": ["ARR", "MRR", "users", "clients", "case study", "won", "deployed", "live"],
+    "moat": ["patent", "proprietary", "unique", "defensible", "edge", "advantage"],
+    "risk": ["compliance", "SEC", "FCA", "regulation", "privacy", "licen", "risk", "policy"],
+    "team": ["founder", "CEO", "CTO", "background", "hiring", "team", "leadership"],
+    "deployability": ["on-prem", "VPC", "SOC2", "SAML", "SSO", "SLA", "integration", "SDK", "API"],
+}
+STRENGTH_BY_DOMAIN = {
+    "first_party": "weak",  # 회사 내부 도메인
+    "trusted_media": "medium",  # 언론 등
+    "regulator": "strong",  # 규제/공시
+    "partner": "medium",  # 파트너/생태
+}
+
+
 class AugmentAgent:
     """
-    주어진 회사 목록으로 웹 스파이더링을 시작하여 콘텐츠를 수집, 처리, 임베딩하고
-    ChromaDB에 영구 저장하는 에이전트. (크롤링 차단 방지 헤더 적용)
+    회사 웹/사이트맵/화이트리스트 외부 링크까지 확장 수집 → 임베딩 → Chroma 저장.
+    Evidence는 state.chunks에도 누적.
     """
 
     def __init__(self, openai_api_key: str | None = None, db_path: str | None = None):
@@ -27,10 +86,8 @@ class AugmentAgent:
         if not openai_api_key:
             raise ValueError("OpenAI API 키가 필요합니다.")
 
-        # --- 클라이언트 초기화 ---
         self.openai_client = OpenAI(api_key=openai_api_key)
 
-        # 디폴트 경로 통일: db/chroma_db
         self.db_path = db_path or os.path.join(os.getcwd(), "db", "chroma_db")
         os.makedirs(self.db_path, exist_ok=True)
         self.chroma_client = chromadb.PersistentClient(path=self.db_path)
@@ -38,35 +95,37 @@ class AugmentAgent:
             name="financial_companies_evidence", metadata={"hnsw:space": "cosine"}
         )
 
-        # --- ▼▼▼ 1단계 보강: 크롤링 차단 방지를 위한 헤더 추가 ▼▼▼ ---
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
             "Referer": "https://www.google.com/",
         }
         self._state_ref: PipelineState | None = None
-        # --- ▲▲▲ 여기까지 추가 ---
 
     def __call__(self, state: PipelineState) -> PipelineState:
-        """LangGraph 호환: state를 받아 실행"""
         self._state_ref = state
         companies = [c.model_dump() for c in state.companies]
-        # 너무 오래 크롤링하지 않도록 기본 3페이지
-        self.run(companies=companies, crawl_limit_per_company=3)
+        self.run(companies=companies, crawl_limit_per_company=10)
         logging.info(f"[Augment] state.chunks appended = {len(state.chunks)}")
         return state
 
-    def run(self, companies, crawl_limit_per_company=5):
+    # -------------------- Crawl --------------------
+    def run(self, companies, crawl_limit_per_company=10):
         print("데이터 증강 프로세스를 시작합니다.")
         for company in companies:
             company_name = company["name"]
-            initial_url = company["website"]
-            company_id = company.get("id")  # ← Seraph/Filter의 id 사용
+            initial_url = company.get("website")
+            company_id = company.get("id")
 
             print(f"\n===== '{company_name}' 회사 처리 시작 =====")
-            urls_to_visit = [initial_url] if initial_url else []
+            seed_links = []
+            if initial_url:
+                seed_links.append(initial_url)
+                seed_links += self._discover_from_sitemap(initial_url)
+                seed_links = list(dict.fromkeys(seed_links))  # dedupe
+
+            urls_to_visit = list(seed_links)
             visited_urls = set()
             crawled_count = 0
 
@@ -74,99 +133,193 @@ class AugmentAgent:
                 url = urls_to_visit.pop(0)
                 if url in visited_urls:
                     continue
-                print(f"[{crawled_count + 1}/{crawl_limit_per_company}] 크롤링 중: {url}")
                 visited_urls.add(url)
                 crawled_count += 1
+                print(f"[{crawled_count}/{crawl_limit_per_company}] 크롤링 중: {url}")
                 try:
                     raw_text, new_links = self._fetch_and_extract(url)
                     if raw_text:
-                        enriched = self._process_and_enrich(raw_text, url, company_name, company_id)
+                        enriched = self._process_and_enrich(
+                            raw_text, url, company_name, company_id, base_site=initial_url
+                        )
                         self._embed_and_store(enriched)
+
+                    # 내부링크 + 화이트리스트 외부만 큐에 추가
                     for link in new_links:
-                        if link not in visited_urls:
-                            urls_to_visit.append(link)
-                    time.sleep(1)
+                        if link in visited_urls:
+                            continue
+                        if self._allow_link(initial_url, link):
+                            if any(
+                                h in link for h in ALLOWED_PATH_HINTS
+                            ) or self._is_external_allowed(initial_url, link):
+                                urls_to_visit.append(link)
+
+                    time.sleep(0.6)
                 except Exception as e:
                     print(f"  [오류] 처리 중 문제 발생 ({url}): {e}")
                     continue
         print("\n===== 모든 회사에 대한 데이터 증강 프로세스 완료 =====")
 
-    def _fetch_and_extract(self, url):
-        """주어진 URL에서 콘텐츠를 가져오고 텍스트와 새로운 링크를 추출"""
-        # ❗️ 변경점: self.headers 사용, timeout 증가
-        response = requests.get(url, headers=self.headers, timeout=15)
-        response.raise_for_status()
+    def _discover_from_sitemap(self, site_url: str) -> list[str]:
+        out = []
+        root = f"{urlparse(site_url).scheme}://{urlparse(site_url).netloc}"
+        for path in ("/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml"):
+            sm = root + path
+            try:
+                r = requests.get(sm, headers=self.headers, timeout=10)
+                if r.status_code != 200 or "xml" not in r.headers.get("content-type", ""):
+                    continue
+                soup = BeautifulSoup(r.content, "xml")
+                for loc in soup.find_all("loc"):
+                    u = loc.text.strip()
+                    if any(h in u for h in ALLOWED_PATH_HINTS):
+                        out.append(u.split("#")[0])
+            except Exception:
+                continue
+        return list(dict.fromkeys(out))
 
-        content_type = response.headers.get("content-type", "").lower()
+    def _allow_link(self, base: str | None, link: str) -> bool:
+        if not base:
+            return False
+        b = urlparse(base).netloc
+        u = urlparse(link).netloc
+        # 내부 도메인 허용
+        if u == b or u.endswith("." + b):
+            return True
+        # 외부 화이트리스트 도메인 허용
+        return self._is_external_allowed(base, link)
+
+    def _is_external_allowed(self, base: str | None, link: str) -> bool:
+        u = urlparse(link).netloc
+        return any(u == d or u.endswith("." + d) for d in ALLOWED_EXTERNAL_DOMAINS)
+
+    def _extract_published(self, soup: BeautifulSoup) -> str | None:
+        """
+        간단한 게시일 추출:
+        - <time datetime="...">
+        - meta[property='article:published_time'|'og:updated_time']
+        - meta[itemprop='datePublished'|'dateModified']
+        """
+        try:
+            t = soup.find("time", attrs={"datetime": True})
+            if t and t.get("datetime"):
+                return t["datetime"].strip()
+            for sel, key in [
+                ("meta[property='article:published_time']", "content"),
+                ("meta[property='og:updated_time']", "content"),
+                ("meta[itemprop='datePublished']", "content"),
+                ("meta[itemprop='dateModified']", "content"),
+            ]:
+                m = soup.select_one(sel)
+                if m and m.get(key):
+                    return m.get(key).strip()
+        except Exception:
+            pass
+        return None
+
+    def _fetch_and_extract(self, url):
+        r = requests.get(url, headers=self.headers, timeout=20)
+        r.raise_for_status()
+        ctype = r.headers.get("content-type", "").lower()
         base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
 
-        text = ""
-        links = []
+        text, links = "", []
+        if "html" in ctype:
+            soup = BeautifulSoup(r.content, "html.parser")
+            # main/article 우선
+            main = soup.find("main") or soup.find("article") or soup.find("body")
+            if main:
+                for t in main(["script", "style", "noscript", "nav", "footer", "header", "form"]):
+                    t.decompose()
+                text = main.get_text(separator="\n", strip=True)
+            # 게시일 추출 시도 → 텍스트 선두에 마커 삽입
+            pub = self._extract_published(soup)
+            if pub:
+                text = f"[PUBLISHED:{pub}]\n{text}"
+            for a in soup.find_all("a", href=True):
+                new_url = urljoin(base_url, a["href"]).split("#")[0]
+                links.append(new_url)
+        elif "pdf" in ctype:
+            with io.BytesIO(r.content) as f:
+                with pdfplumber.open(f) as pdf:
+                    for p in pdf.pages:
+                        pt = p.extract_text() or ""
+                        text += pt + "\n"
 
-        if "html" in content_type:
-            soup = BeautifulSoup(response.content, "html.parser")
-            body = soup.find("body")
-            if body:
-                text = body.get_text(separator="\n", strip=True)
-            for link in soup.find_all("a", href=True):
-                new_url = urljoin(base_url, link["href"]).split("#")[0]
-                if urlparse(new_url).netloc == urlparse(base_url).netloc:
-                    links.append(new_url)
-        elif "pdf" in content_type:
-            with io.BytesIO(response.content) as pdf_file:
-                with pdfplumber.open(pdf_file) as pdf:
-                    for page in pdf.pages:
-                        page_text = page.extract_text()
-                        if page_text:
-                            text += page_text + "\n"
+        return text, list(dict.fromkeys(links))
 
-        return text, list(set(links))
+    # -------------------- Enrich/Embed --------------------
+    def _guess_axis(self, txt: str) -> str:
+        t = (txt or "").lower()
+        best_axis, best_hits = "market", 0
+        for axis, kws in AXIS_HINTS.items():
+            hits = sum(1 for k in kws if k.lower() in t)
+            if hits > best_hits:
+                best_axis, best_hits = axis, hits
+        return best_axis
 
-    def _process_and_enrich(self, raw_text, source_url, company_name, company_id=None):
-        """텍스트를 청크화하고 요약/라벨링(간이), Evidence 메타 통일"""
-        chunks = [raw_text[i : i + 1000] for i in range(0, len(raw_text), 800)]
-        enriched_chunks = []
-        for i, chunk_text in enumerate(chunks):
-            if len(chunk_text.strip()) < 100:
+    def _guess_strength(self, source: str, base_site: str | None) -> str:
+        dom = urlparse(source).netloc
+        if base_site:
+            base = urlparse(base_site).netloc
+            if dom == base or dom.endswith("." + base):
+                return STRENGTH_BY_DOMAIN["first_party"]
+        if any(dom == d or dom.endswith("." + d) for d in ("sec.gov", "fca.org.uk", "mas.gov.sg")):
+            return STRENGTH_BY_DOMAIN["regulator"]
+        if any(dom == d or dom.endswith("." + d) for d in ALLOWED_EXTERNAL_DOMAINS):
+            return STRENGTH_BY_DOMAIN["trusted_media"]
+        return "weak"
+
+    def _process_and_enrich(
+        self, raw_text, source_url, company_name, company_id=None, base_site=None
+    ):
+        chunks = [raw_text[i : i + 1200] for i in range(0, len(raw_text), 900)]
+        enriched = []
+        for i, chunk in enumerate(chunks):
+            if len(chunk.strip()) < 120:
                 continue
-            summary = f"Summary of content from {company_name}."
-            labels = ["finance", "AI", (company_name or "").lower().replace(" ", "")]
-            enriched_chunks.append(
+            # 텍스트 선두의 게시일 마커를 메타에 이관
+            published = None
+            if chunk.startswith("[PUBLISHED:") and "]" in chunk:
+                published = chunk[len("[PUBLISHED:") : chunk.find("]")]
+                chunk = (
+                    chunk[chunk.find("]\n") + 2 :]
+                    if "]\n" in chunk
+                    else chunk[chunk.find("]") + 1 :]
+                )
+
+            axis = self._guess_axis(chunk)
+            strength = self._guess_strength(source_url, base_site)
+            enriched.append(
                 {
-                    "text": chunk_text,
+                    "text": chunk,
                     "metadata": {
                         "source": source_url,
                         "company": company_name,
                         "company_id": company_id or (company_name or "").lower().replace(" ", ""),
-                        # 최소 기본값(라벨러 붙이기 전)
-                        "category": "market",
-                        "strength": "weak",
-                        "published": None,
-                        "summary": summary,
-                        "labels": ", ".join(labels),
+                        "category": axis,
+                        "strength": strength,
+                        "published": published,
+                        "summary": f"{company_name} - {axis} evidence",
+                        "labels": axis,
                     },
                 }
             )
-        return enriched_chunks
+        return enriched
 
     def _embed_and_store(self, chunks):
-        """임베딩 및 Chroma 저장 + state.chunks 추가"""
         if not chunks:
             return
-        texts_to_embed = [c["text"] for c in chunks]
-        response = self.openai_client.embeddings.create(
-            input=texts_to_embed, model="text-embedding-3-small"
-        )
-        embeddings = [item.embedding for item in response.data]
-        metadatas = [c["metadata"] for c in chunks]
-        ids = [f"{c['metadata']['source']}-chunk{i}" for i, c in enumerate(chunks)]
+        docs = [c["text"] for c in chunks]
+        resp = self.openai_client.embeddings.create(input=docs, model="text-embedding-3-small")
+        embeds = [d.embedding for d in resp.data]
+        metas = [c["metadata"] for c in chunks]
+        # 회사별/URL별 고유화: company_id:source#idx
+        ids = [f"{m.get('company_id','unknown')}:{m['source']}#{i}" for i, m in enumerate(metas)]
 
-        self.collection.upsert(
-            embeddings=embeddings, documents=texts_to_embed, metadatas=metadatas, ids=ids
-        )
+        self.collection.upsert(embeddings=embeds, documents=docs, metadatas=metas, ids=ids)
         print(f"  [성공] {len(chunks)}개의 청크를 ChromaDB에 저장/업데이트했습니다.")
 
-        # ★ PipelineState에 Evidence도 누적
         if self._state_ref is not None:
             for c in chunks:
                 m = c["metadata"]
@@ -179,31 +332,3 @@ class AugmentAgent:
                         published=m.get("published"),
                     )
                 )
-
-        print(f"  [성공] {len(chunks)}개의 청크를 ChromaDB에 저장/업데이트했습니다.")
-
-
-if __name__ == "__main__":
-    load_dotenv()
-
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-    script_path = os.path.abspath(__file__)
-    project_root = os.path.dirname(os.path.dirname(script_path))
-
-    input_file_path = os.path.join(project_root, "data", "raw", "candidates.json")
-    db_directory_path = os.path.join(project_root, "db", "chroma_db")
-
-    try:
-        with open(input_file_path, "r", encoding="utf-8") as f:
-            initial_companies = json.load(f)
-    except FileNotFoundError:
-        print(f"[오류] 입력 파일 '{input_file_path}'를 찾을 수 없습니다.")
-        exit()
-
-    try:
-        agent = AugmentAgent(openai_api_key=OPENAI_API_KEY, db_path=db_directory_path)
-        agent.run(companies=initial_companies, crawl_limit_per_company=5)
-    except ValueError as e:
-        print(f"에이전트 실행 실패: {e}")
-        print("OPENAI_API_KEY가 .env 파일 또는 환경 변수에 올바르게 설정되었는지 확인하세요.")

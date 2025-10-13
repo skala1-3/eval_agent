@@ -1,4 +1,3 @@
-# graph/run.py
 # Agentic RAG v2 - CLI entrypoint with logging & progress
 # Python 3.11+
 #
@@ -137,25 +136,25 @@ def main():
         t4 = progress.add_task("▶ Scoring", total=1)
         t5 = progress.add_task("▶ Report (PDF)", total=1)
 
-    # Seraph → Filter
-    state = run_step_by_step_step(state, steps=("seraph", "filter"), nodes=nodes)
-    progress.update(t1, advance=1)
+        # Seraph → Filter
+        state = run_step_by_step_step(state, steps=("seraph", "filter"), nodes=nodes)
+        progress.update(t1, advance=1)
 
-    # Augment
-    state = run_step_by_step_step(state, steps=("augment",), nodes=nodes)
-    progress.update(t2, advance=1)
+        # Augment
+        state = run_step_by_step_step(state, steps=("augment",), nodes=nodes)
+        progress.update(t2, advance=1)
 
-    # RAG
-    state = run_step_by_step_step(state, steps=("rag",), nodes=nodes)
-    progress.update(t3, advance=1)
+        # RAG
+        state = run_step_by_step_step(state, steps=("rag",), nodes=nodes)
+        progress.update(t3, advance=1)
 
-    # Scoring
-    state = run_step_by_step_step(state, steps=("scoring",), nodes=nodes)
-    progress.update(t4, advance=1)
+        # Scoring
+        state = run_step_by_step_step(state, steps=("scoring",), nodes=nodes)
+        progress.update(t4, advance=1)
 
-    # Report
-    state = run_step_by_step_step(state, steps=("report",), nodes=nodes)
-    progress.update(t5, advance=1)
+        # Report
+        state = run_step_by_step_step(state, steps=("report",), nodes=nodes)
+        progress.update(t5, advance=1)
 
     # ── 출력 요약
     _print_summary(console, state, paths["reports"])
@@ -195,11 +194,6 @@ def _print_summary(console: Console, state: PipelineState, report_dir: Path) -> 
     table.add_column("Total", justify="right", width=6)
     table.add_column("Decision", justify="center", width=10)
 
-    # (옵션) 축별 점수도 보고 싶다면 주석 해제
-    # axis_cols = ["ai_tech","market","traction","moat","risk","team","deployability"]
-    # for ax in axis_cols:
-    #     table.add_column(ax, justify="right", width=5)
-
     # 총점 기준 내림차순 정렬
     def _total_of(cid: str) -> float:
         sc = state.scorecard.get(cid)
@@ -212,15 +206,11 @@ def _print_summary(console: Console, state: PipelineState, report_dir: Path) -> 
         if sc:
             total = f"{sc.total:.2f}"
             decision = sc.decision
-            # (옵션) 축별 값 뽑기
-            # axis_map = {it.key: it.value for it in sc.items}
-            # row = [f"{axis_map.get(ax, 0):.1f}" for ax in axis_cols]
         else:
             total = "-"
             decision = "-"
-            # row = ["-"] * len(axis_cols)
 
-        table.add_row(str(idx), comp.name or comp.id, total, decision)  # + row(옵션)
+        table.add_row(str(idx), comp.name or comp.id, total, decision)
 
     if discovered:
         console.print(table)
