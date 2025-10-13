@@ -1,8 +1,8 @@
 # agents/report_writer_agent.py
-# Consulting Report (no-KPI version)
-# - KPI 섹션 완전 제거
-# - 경쟁 매트릭스 / 리스크 Heat / 시나리오 표 / 강점·취약 불릿 / Evidence / 결론(심층) 유지
-# - 템플릿 버그 대응: dict 동적 키 접근은 c.get(r.key, '—') 사용
+# Consulting Report (no-KPI, no-Competition-Matrix)
+# - KPI 섹션 제거
+# - 경쟁 매트릭스 섹션/정규화/컨텍스트 전부 제거
+# - 리스크 Heat / 시나리오 / 강점·취약 불릿 / Evidence / 결론(심층) 유지
 
 import os, re, json, asyncio, logging
 from datetime import datetime
@@ -88,13 +88,13 @@ def _i18n(lang: str) -> Dict[str, Any]:
             "invest":"INVEST","hold":"HOLD","total":"Total","confidence":"Confidence",
             "evidence":"Evidence by Axis","strength":"Strength","text":"Text","source":"Source","date":"Date",
             "narrative":"Strengths & Weaknesses",
-            "matrix":"Competitive Matrix","risk_heat":"Risk Heat","scenarios":"Scenarios"
+            "risk_heat":"Risk Heat","scenarios":"Scenarios"
         }}
     return {"lang":"ko","labels":{
         "invest":"투자 권장","hold":"보류","total":"총점","confidence":"신뢰도",
         "evidence":"근거(축별)","strength":"강도","text":"텍스트","source":"출처","date":"날짜",
         "narrative":"강점/취약 내러티브",
-        "matrix":"경쟁 매트릭스","risk_heat":"리스크 Heat","scenarios":"시나리오"
+        "risk_heat":"리스크 Heat","scenarios":"시나리오"
     }}
 
 # ---------------- Prompts ----------------
@@ -261,7 +261,6 @@ class ReportWriterAgent:
 
         product_docs  = state.get("product_docs")  or []
         market_docs   = state.get("market_docs") or []
-        competitors   = state.get("competitors") or []
         risk_table    = state.get("risk_table") or await self._gen_risk_heat(company_obj, axes, blob)
         scenarios     = state.get("scenarios") or await self._gen_scenarios(company_obj, axes, blob)
 
@@ -327,9 +326,6 @@ class ReportWriterAgent:
         decision_label = i18n["labels"]["invest"]
         items_for_evidence = [it for it in normalized_items if it["key"] != "total"]
 
-        # 경쟁 매트릭스 표
-        comp_matrix = self._normalize_comp_matrix(competitors)
-
         context = {
             "i18n": i18n,
             "company": company_obj,
@@ -353,39 +349,11 @@ class ReportWriterAgent:
             "confidence_mean": mean_conf,
             "radar_chart_path": state.get("radar_chart_path") or None,
 
-            # KPI 제거 → 컨텍스트에 metrics 없음
-            "comp_matrix": comp_matrix,
+            # 경쟁 매트릭스 완전 제거
             "risk_heat": risk_table,
             "scenarios": scenarios,
         }
         return context
-
-    # ----- Competition matrix -----
-    def _normalize_comp_matrix(self, competitors: List[Dict[str,Any]]) -> Dict[str, Any]:
-        cols = []
-        for c in (competitors or []):
-            cols.append({
-                "name": safe_str(c.get("name"), "-"),
-                "product": safe_str(c.get("product"), "—"),
-                "security": safe_str(c.get("security"), "—"),
-                "deployment": safe_str(c.get("deployment"), "—"),
-                "localization": safe_str(c.get("localization"), "—"),
-                "pricing": safe_str(c.get("pricing"), "—"),
-                "references": safe_str(c.get("references"), "—"),
-            })
-        if not cols:
-            cols = [
-                {"name":"Generic A","product":"—","security":"—","deployment":"—","localization":"—","pricing":"—","references":"—"},
-                {"name":"Generic B","product":"—","security":"—","deployment":"—","localization":"—","pricing":"—","references":"—"},
-            ]
-        return {"cols": cols, "rows": [
-            {"key":"product","label":"제품 기능"},
-            {"key":"security","label":"보안/컴플라이언스"},
-            {"key":"deployment","label":"배포 옵션"},
-            {"key":"localization","label":"로컬라이즈"},
-            {"key":"pricing","label":"가격/조달"},
-            {"key":"references","label":"레퍼런스"},
-        ]}
 
     # ----- Evidence 수집 -----
     def _collect_evidence(self, state: Dict[str, Any], axes: Dict[str, float], blob: str) -> Dict[str, List[EvidenceItem]]:
@@ -622,7 +590,7 @@ class ReportWriterAgent:
         if not bullets: return []
         norm = []
         for b in bullets:
-            b = _norm_bullet(b)
+            b = _norm_bullets(b := b) if False else _norm_bullet(b)
             if not b: continue
             b = truncate(b, 140)
             norm.append(b)
@@ -701,11 +669,6 @@ if __name__ == "__main__":
         "competitor_summary": "한국어 성능·온프렘 대응·보안 인증에서 경쟁력.",
         "decision_rationale": "시장성/기술성 우수 → 투자 권장.",
         "query": "AI financial advisory startup",
-
-        "competitors": [
-            {"name":"CompAlpha","product":"LLM routing, agent assist","security":"SOC2","deployment":"Cloud/On-prem","localization":"EN/KO","pricing":"per seat","references":"Tier-1 bank"},
-            {"name":"CompBeta","product":"Voice+Chat suite","security":"ISO27001","deployment":"Cloud","localization":"EN/JP","pricing":"usage","references":"Telecom, BFSI"}
-        ],
 
         "evidence": {
             "ai_tech": [

@@ -96,34 +96,6 @@
 
   <div class="pagebreak"></div>
 
-  <!-- 경쟁 매트릭스 -->
-  <section class="mb24">
-    <h2>{{ i18n.labels.matrix }}</h2>
-    <div class="box">
-      <table class="small">
-        <thead>
-          <tr>
-            <th class="td-lg">항목</th>
-            {% for c in comp_matrix.cols %}
-              <th>{{ c.name }}</th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in comp_matrix.rows %}
-            <tr>
-              <td>{{ r.label }}</td>
-              {% for c in comp_matrix.cols %}
-                <td>{{ c.get(r.key, '—') }}</td>  <!-- dict 동적 키 접근 -->
-              {% endfor %}
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div class="small muted mt8">※ 값이 비어있는 칸은 공개 자료상 확인 불가를 의미합니다.</div>
-    </div>
-  </section>
-
   <!-- Evidence (total 제외) -->
   <section class="mb24">
     <h2>{{ i18n.labels.evidence }}</h2>
