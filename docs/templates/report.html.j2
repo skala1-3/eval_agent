@@ -1,29 +1,41 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="{{ i18n.lang|default('ko') }}">
 <head>
   <meta charset="utf-8" />
-  <title>{{ company.name }} — 투자 컨설팅 보고서</title>
+  <title>{{ company.name }} — {% if i18n.lang=='en' %}Consulting Report{% else %}투자 컨설팅 보고서{% endif %}</title>
   <style>
     @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
     :root { --text:#111; --muted:#666; --line:#e5e5e5; --accent:#1f6feb; --ok:#198754; --warn:#c07d00; --bad:#c03221; --bg:#fff; --bg-lite:#f8f9fb; }
-    html,body{ font-family:"Noto Sans CJK KR","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",Arial,sans-serif; color:var(--text); font-size:11pt; line-height:1.55; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    h1,h2,h3{ margin:0 0 .4em 0; } h1{font-size:20pt;} h2{font-size:14pt; border-bottom:2px solid var(--line); padding-bottom:4px;} h3{font-size:12.5pt; color:var(--muted);}
+    html,body{ font-family:"Noto Sans CJK KR","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",Arial,sans-serif; color:var(--text); font-size:11pt; line-height:1.65; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    h1,h2,h3{ margin:0 0 .6em 0; } h1{font-size:20pt;} h2{font-size:14pt; border-bottom:2px solid var(--line); padding-bottom:6px;} h3{font-size:12.5pt; color:var(--muted);}
+    p{ margin:0 0 12px 0; }
+    ul{ margin:0 0 8px 20px; padding:0; }
+    li{ margin:0 0 6px 0; }
+    ul.bulleted{ margin:0 0 8px 22px; padding:0; list-style:disc; }
+    ul.bulleted li{ margin:0 0 6px 0; }
     .muted{color:var(--muted);} .pill{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:9pt;background:var(--bg-lite);}
     .good{color:var(--ok);} .warn{color:var(--warn);} .bad{color:var(--bad);}
-    .grid-2{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;} .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
-    .kv{display:grid;grid-template-columns:110px 1fr;gap:8px 10px;} .box{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff;}
-    .scorebox{border-left:4px solid var(--accent);} .small{font-size:9.5pt;} .right{text-align:right;} .mb8{margin-bottom:8px;} .mb12{margin-bottom:12px;} .mb16{margin-bottom:16px;} .mb24{margin-bottom:24px;} .mt8{margin-top:8px;} .pagebreak{page-break-before:always;}
-    table{width:100%;border-collapse:collapse;table-layout:fixed;} th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;} th{background:#f5f7fb;text-align:left;}
-    .td-sm{width:18mm;} .td-md{width:40mm;}
+    .grid-2{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;}
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+    .kv{display:grid;grid-template-columns:110px 1fr;gap:8px 10px;}
+    .box{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff;}
+    .scorebox{border-left:4px solid var(--accent);} .small{font-size:9.5pt;} .right{text-align:right;} .center{text-align:center;}
+    .mb8{margin-bottom:8px;} .mb12{margin-bottom:12px;} .mb16{margin-bottom:16px;} .mb20{margin-bottom:20px;} .mb24{margin-bottom:24px;} .mt8{margin-top:8px;} .pagebreak{page-break-before:always;}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;} th,td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;} th{background:#f5f7fb;text-align:left;}
+    .td-xs{width:16mm;} .td-sm{width:22mm;} .td-md{width:42mm;} .td-lg{width:58mm;}
     .tag{display:inline-block;padding:2px 6px;margin:2px 4px 0 0;border:1px solid var(--line);border-radius:6px;font-size:9pt;background:#fff;}
-    ul{margin:0 0 0 18px; padding:0;}
+    .tile{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);text-align:center;}
+    .tile .label{font-size:9pt;color:var(--muted);margin-bottom:2px;}
+    .tile .value{font-size:16pt;font-weight:700;}
+    .tile .badge{display:inline-block;margin-top:4px;padding:1px 6px;border:1px solid var(--line);border-radius:999px;font-size:8.5pt;background:var(--bg-lite);color:var(--muted);}
+    .preline{white-space:pre-line;}
   </style>
 </head>
 <body>
 
   <!-- 헤더 -->
-  <section class="mb16">
-    <h1>AI Financial Advisory — 투자 컨설팅 보고서</h1>
+  <section class="mb20">
+    <h1>{% if i18n.lang=='en' %}AI Financial Advisory — Consulting Report{% else %}AI Financial Advisory — 투자 컨설팅 보고서{% endif %}</h1>
     <div class="muted mb12">{{ generated_at }} · Query: “{{ query }}”</div>
 
     <div class="grid-2">
@@ -41,52 +53,61 @@
       </div>
 
       <div class="box">
-        <h2>요약(Score)</h2>
-        <div class="mb8">총점: <strong style="font-size:16pt">{{ scorecard.total|round(2) }}</strong> / 10</div>
+        <h2>{% if i18n.lang=='en' %}Score Summary{% else %}요약(Score){% endif %}</h2>
+        <div class="mb8">{{ i18n.labels.total }}: <strong style="font-size:16pt">{{ scorecard.total|round(2) }}</strong> / 10</div>
+        <div class="mb8">{{ i18n.labels.confidence }}: <strong>{{ confidence_mean|round(2) }}</strong></div>
         <div class="mb12">
-          의사결정:
-          {% if scorecard.decision == "invest" %}<span class="pill good">INVEST (권장)</span>
-          {% elif scorecard.decision == "conditional" %}<span class="pill warn">CONDITIONAL (조건부)</span>
-          {% else %}<span class="pill bad">HOLD (보류)</span>{% endif %}
+          {% if i18n.lang=='en' %}Decision{% else %}의사결정{% endif %}:
+          {% if scorecard.decision == "invest" %}<span class="pill good">{{ scorecard.decision_label|default(i18n.labels.invest) }}</span>
+          {% elif scorecard.decision == "conditional" %}<span class="pill warn">CONDITIONAL</span>
+          {% else %}<span class="pill bad">{{ i18n.labels.hold }}</span>{% endif %}
         </div>
         <div class="small muted">조건: total ≥ 7.5 &amp; mean(confidence) ≥ 0.55</div>
       </div>
     </div>
   </section>
 
-  <!-- 컨설팅 섹션 -->
-  <section class="mb16">
-    <h2>Executive Summary</h2>
-    <p>{{ exec_summary }}</p>
+  <!-- LLM 본문 -->
+  <section class="mb24"><h2>Executive Summary</h2><p>{{ exec_summary }}</p></section>
+  <section class="mb24"><h2>Competitive Position</h2><ul class="bulleted">{% for p in position_points %}<li>{{ p }}</li>{% else %}<li>정보 부족</li>{% endfor %}</ul></section>
+  <section class="mb24"><h2>Risk &amp; Considerations</h2><ul class="bulleted">{% for r in risks %}<li>{{ r }}</li>{% else %}<li>정보 부족</li>{% endfor %}</ul></section>
+  <section class="mb24"><h2>Investment Outlook</h2><p>{{ outlook }}</p></section>
+
+  <!-- KPI Tiles -->
+  <section class="mb24">
+    <h2>{{ i18n.labels.kpis }}</h2>
+    <div class="grid-4">
+      {% set m = metrics %}
+      {% for label, key in [("NRR","nrr"),("GRR","grr"),("Payback (mo)","payback_months"),("Gross Margin","gross_margin"),
+                            ("Win-rate","win_rate"),("Pipeline ×","pipeline_x"),("# Customers","customers_count"),("ARR (proxy)","arr_proxy")] %}
+      <div class="tile">
+        <div class="label">{{ label }}</div>
+        <div class="value">{{ m[key] }}</div>
+        {% if m[key] == "N/A" %}<div class="badge">수집 필요</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
   </section>
 
-  <section class="mb16">
-    <h2>Competitive Position</h2>
-    <ul>
-      {% for p in position_points %}<li>{{ p }}</li>{% endfor %}
-    </ul>
+  <!-- 강점/취약 내러티브 -->
+  <section class="mb24">
+    <h2>{{ i18n.labels.narrative }}</h2>
+    <div class="box mb16">
+      <h3 class="muted">강점</h3>
+      <ul class="bulleted">{% for b in strength_bullets %}<li>{{ b }}</li>{% else %}<li>정보 부족</li>{% endfor %}</ul>
+    </div>
+    <div class="box">
+      <h3 class="muted">취약</h3>
+      <ul class="bulleted">{% for b in weakness_bullets %}<li>{{ b }}</li>{% else %}<li>정보 부족</li>{% endfor %}</ul>
+    </div>
   </section>
 
-  <section class="mb16">
-    <h2>Risk &amp; Considerations</h2>
-    <ul>
-      {% for r in risks %}<li>{{ r }}</li>{% endfor %}
-    </ul>
-  </section>
-
-  <section class="mb16">
-    <h2>Investment Outlook</h2>
-    <p>{{ outlook }}</p>
-  </section>
-
-  <div class="pagebreak"></div>
-
-  <!-- 레이더 + 축별 점수표 -->
-  <section class="mt8">
+  <!-- 축별 점수표 -->
+  <section class="mb24">
     <div class="box">
       <h2>축별 점수(0–10) &amp; 신뢰도(0–1)</h2>
       <table class="small">
-        <thead><tr><th style="width:28mm;">축(Key)</th><th class="right td-sm">점수</th><th class="right td-sm">신뢰도</th></tr></thead>
+        <thead><tr><th style="width:28mm;">축(Key)</th><th class="right td-sm">점수</th><th class="right td-sm">{{ i18n.labels.confidence }}</th></tr></thead>
         <tbody>
         {% for item in scorecard["items"] %}
           <tr><td><code>{{ item.key }}</code></td><td class="right">{{ item.value|round(2) }}</td><td class="right">{{ item.confidence|round(2) }}</td></tr>
@@ -98,23 +119,57 @@
 
   <div class="pagebreak"></div>
 
-  <!-- 근거(Evidence) -->
-  <section>
-    <h2>근거(Evidence by Axis)</h2>
+  <!-- 경쟁 매트릭스 -->
+  <section class="mb24">
+    <h2>{{ i18n.labels.matrix }}</h2>
+    <div class="box">
+      <table class="small">
+        <thead>
+          <tr>
+            <th class="td-lg">항목</th>
+            {% for c in comp_matrix.cols %}
+              <th>{{ c.name }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in comp_matrix.rows %}
+            <tr>
+              <td>{{ r.label }}</td>
+              {% for c in comp_matrix.cols %}
+                <td>{{ c.get(r.key, '—') }}</td>   <!-- ← 여기 수정 -->
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="small muted mt8">※ 값이 비어있는 칸은 공개 자료상 확인 불가를 의미합니다.</div>
+    </div>
+  </section>
+
+  <!-- 근거(Evidence) : total 축 제외 -->
+  <section class="mb24">
+    <h2>{{ i18n.labels.evidence }}</h2>
     {% set limit = evidence_limit_per_axis or 3 %}
-    {% for item in scorecard["items"] %}
-      <div class="box mb12">
-        <h3>■ {{ item.key }} — 점수 {{ item.value|round(2) }} / 신뢰도 {{ item.confidence|round(2) }}</h3>
-        {% if item.evidence %}
+    {% for item in items_for_evidence %}
+      <div class="box mb16">
+        <h3>■ {{ item.key }} — 점수 {{ item.value|round(2) }} / {{ i18n.labels.confidence }} {{ item.confidence|round(2) }}</h3>
+        {% if item.evidence and item.evidence|length > 0 %}
           <table class="small">
-            <thead><tr><th class="td-sm">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
+            <thead><tr><th class="td-xs">강도</th><th>텍스트</th><th class="td-md">출처</th><th class="td-sm">날짜</th></tr></thead>
             <tbody>
             {% for ev in item.evidence[:limit] %}
               <tr>
                 <td>{% if ev.strength == "strong" %}<span class="pill good">strong</span>{% elif ev.strength == "medium" %}<span class="pill warn">medium</span>{% else %}<span class="pill">weak</span>{% endif %}</td>
                 <td>{{ ev.text }}</td>
-                <td>{% if ev.source %}<a href="{{ ev.source }}">link</a>{% else %}<span class="muted">-</span>{% endif %}</td>
-                <td>{{ ev.published or "-" }}</td>
+                <td>
+                  {% if ev.source_url and ev.source_url != '-' %}
+                    <a href="{{ ev.source_url }}">{{ ev.domain or 'open' }}{% if ev.title and ev.title != '-' %} | {{ ev.title }}{% endif %}</a>
+                  {% else %}
+                    <span class="muted">-</span>
+                  {% endif %}
+                </td>
+                <td>{{ ev.published_at or "-" }}</td>
               </tr>
             {% endfor %}
             </tbody>
@@ -123,25 +178,56 @@
             <div class="small muted mt8">(+{{ item.evidence|length - limit }} 더 있음)</div>
           {% endif %}
         {% else %}
-          <div class="muted small">표시할 근거가 없습니다.</div>
+          <div class="muted small">정보 부족</div>
         {% endif %}
       </div>
     {% endfor %}
   </section>
 
-  <div class="pagebreak"></div>
+  <!-- 리스크 Heat -->
+  <section class="mb24">
+    <h2>{{ i18n.labels.risk_heat }}</h2>
+    <div class="box">
+      <table class="small">
+        <thead><tr><th class="td-md">Risk</th><th class="td-sm">Likelihood</th><th class="td-sm">Impact</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          {% for r in risk_heat.rows %}
+            <tr>
+              <td>{{ r.risk }}</td><td>{{ r.likelihood }}</td><td>{{ r.impact }}</td><td>{{ r.mitigation }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 시나리오 -->
+  <section class="mb24">
+    <h2>{{ i18n.labels.scenarios }}</h2>
+    <div class="box">
+      <table class="small">
+        <thead><tr><th class="td-sm">Scenario</th><th>Drivers</th><th>Catalysts</th><th>Blockers</th><th>Conditions</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Upside</strong></td><td>{{ scenarios.upside.drivers }}</td><td>{{ scenarios.upside.catalysts }}</td><td>{{ scenarios.upside.blockers }}</td><td>{{ scenarios.upside.conditions }}</td></tr>
+          <tr><td><strong>Base</strong></td><td>{{ scenarios.base.drivers }}</td><td>{{ scenarios.base.catalysts }}</td><td>{{ scenarios.base.blockers }}</td><td>{{ scenarios.base.conditions }}</td></tr>
+          <tr><td><strong>Downside</strong></td><td>{{ scenarios.downside.drivers }}</td><td>{{ scenarios.downside.catalysts }}</td><td>{{ scenarios.downside.blockers }}</td><td>{{ scenarios.downside.conditions }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <!-- 결론 -->
-  <section>
+  <section class="mb24">
     <h2>결론(Conclusion)</h2>
     {% if scorecard.decision == "invest" %}
-      <p><strong class="good">투자 권장</strong>입니다. 총점 {{ scorecard.total|round(2) }}이며, 신뢰도 평균이 기준을 충족합니다. 후속 검토로는 계약/보안/데이터 경계(온프렘/리전) 확인을 권합니다.</p>
+      <p class="mb8"><strong class="good">투자 권장</strong>. 총점 {{ scorecard.total|round(2) }} / 신뢰도 평균 충족.</p>
     {% elif scorecard.decision == "conditional" %}
-      <p><strong class="warn">조건부 권장</strong>입니다. 특정 축의 근거/지표 보강이 필요합니다(예: traction 또는 risk). 보완 이후 재평가를 권장합니다.</p>
+      <p class="mb8"><strong class="warn">CONDITIONAL</strong>. 취약 축 보강 후 재평가 권장.</p>
     {% else %}
-      <p><strong class="bad">보류</strong>입니다. 총점 또는 신뢰도가 기준 미만입니다. 기술/시장/리스크 항목의 근거 강화를 우선 과제로 권합니다.</p>
+      <p class="mb8"><strong class="bad">보류</strong>. 임계 미만. 근거 보강 필요.</p>
     {% endif %}
-    <p class="small muted">※ 본 보고서는 공개 자료 및 자동화된 RAG 기반 요약/평가에 근거하며, 최종 투자 의사결정은 별도의 실사(DD) 절차를 필요로 합니다.</p>
+    <p class="preline">{{ gpt_conclusion }}</p>
+    <p class="small muted mt8">※ 본 보고서는 공개 자료 및 자동화된 RAG 기반 요약/평가에 근거하며, 최종 투자 의사결정은 별도의 실사(DD) 절차를 필요로 합니다.</p>
   </section>
 
 </body>
