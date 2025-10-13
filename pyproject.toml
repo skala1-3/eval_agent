@@ -19,7 +19,6 @@ dependencies = [
   "langchain>=0.3.0",
   "langchain-openai>=0.1.0",
   "langchain-text-splitters>=0.0.1",
-
   # --- Vector DB (로컬) ---
   "chromadb>=1.1.1",
   # --- Crawling/Parsing ---
@@ -38,6 +37,9 @@ dependencies = [
   "pydantic>=2.8.0",
   "python-dotenv>=1.0.1",
   "serpapi>=0.1.5",
+  "google-search-results>=2.4.2",
+  "jinja2>=3.1.6",
+  "playwright>=1.55.0",
 ]
 
 # [KO] 선택(개발) 의존성: 포맷팅/정적검사/테스트는 후반 적용 권장

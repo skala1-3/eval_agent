@@ -1,6 +1,7 @@
 # agents/rag_retriever_agent.py
 
 import os
+import logging
 from typing import List, Dict
 from openai import OpenAI
 import chromadb
@@ -8,24 +9,27 @@ import chromadb
 # 실제 프로젝트의 상태 및 모델 정의를 가져옵니다.
 from graph.state import PipelineState, CompanyMeta, Evidence, EvidenceCategory
 
+
 class RAGRetrieverAgent:
     """
     각 회사와 평가 축에 따라 ChromaDB에서 구조화된 근거(Evidence)를 검색하는 에이전트.
     """
-    def __init__(self, db_path: str = "./data/processed/chroma_db", collection_name: str = "startup_data"):
+
+    def __init__(
+        self, db_path: str | None = None, collection_name: str = "financial_companies_evidence"
+    ):
         """
         RAGRetrieverAgent를 초기화합니다.
         """
         print("🤖 RAGRetrieverAgent 초기화 중...")
         self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
-        try:
-            self.db_client = chromadb.PersistentClient(path=db_path)
-            self.collection = self.db_client.get_collection(name=collection_name)
-            print(f"✅ ChromaDB 컬렉션 '{collection_name}'에 성공적으로 연결했습니다.")
-        except Exception as e:
-            print(f"🚨 ChromaDB 연결 실패: {e}")
-            raise
+        db_path = db_path or os.path.join(os.getcwd(), "db", "chroma_db")
+        self.db_client = chromadb.PersistentClient(path=db_path)
+        self.collection = self.db_client.get_collection(name=collection_name)
+        print(f"✅ ChromaDB 컬렉션 '{collection_name}'에 성공적으로 연결했습니다.")
+
+    def __call__(self, state: PipelineState) -> PipelineState:
+        return self.invoke(state)  # 기존 invoke 재사용
 
     def _generate_search_query(self, axis: str, company_name: str) -> str:
         """
@@ -44,7 +48,7 @@ class RAGRetrieverAgent:
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
-                max_tokens=100
+                max_tokens=100,
             )
             return response.choices[0].message.content.strip().strip('"')
         except Exception as e:
@@ -52,78 +56,72 @@ class RAGRetrieverAgent:
             return f"{company_name}의 {axis}에 대한 정보"
 
     def invoke(self, state: PipelineState) -> PipelineState:
-        """
-        후보 회사 목록을 순회하며 각 평가 축에 대한 근거를 검색하고 상태를 업데이트합니다.
-        """
         print(f"\n🔍 총 {len(state.companies)}개 회사에 대한 근거 자료 검색을 시작합니다...")
-        
         all_companies_evidence: Dict[str, Dict[str, List[Evidence]]] = {}
-        
-        # scorecard.md에서 정의된 7축 평가 기준을 가져옵니다.
-        # 실제로는 scorecard.md를 파싱하거나 상수로 관리하는 것이 좋습니다.
+
         evaluation_axes: Dict[EvidenceCategory, str] = {
             "ai_tech": "기술 혁신성 및 독창성",
             "market": "시장 잠재력 및 성장성",
             "team": "팀 역량 및 전문성",
-            "moat": "경쟁 환경 및 차별성", # EvidenceCategory에 맞게 수정
+            "moat": "경쟁 환경 및 차별성",
             "risk": "규제 및 법적 리스크",
-            "traction": "사업 모델 및 수익성", # EvidenceCategory에 맞게 수정
-            "deployability": "재무 건전성 및 투자 매력도", # EvidenceCategory에 맞게 수정
+            "traction": "사업 성과 및 매출/지표",
+            "deployability": "도입 용이성·보안·운영",
         }
 
         for company in state.companies:
             print(f"\n  🏢 '{company.name}' (ID: {company.id}) 처리 중...")
-            evidence_per_axis: Dict[str, List[Evidence]] = {}
+            ev_per_axis: Dict[str, List[Evidence]] = {}
 
             for axis_key, axis_description in evaluation_axes.items():
-                print(f"    - 평가 축 '{axis_description}' 검색...")
-                
                 search_query = self._generate_search_query(axis_description, company.name)
-                print(f"      - 생성된 쿼리: \"{search_query}\"")
-                
                 try:
-                    results = self.collection.query(
-                        query_texts=[search_query],
-                        n_results=3,
-                        # AugmentAgent가 저장한 메타데이터를 기반으로 필터링
-                        where={"company_id": company.id}
+                    vec = (
+                        self.openai_client.embeddings.create(
+                            input=[search_query], model="text-embedding-3-small"
+                        )
+                        .data[0]
+                        .embedding
                     )
-                    
-                    retrieved_evidences: List[Evidence] = []
-                    documents = results.get('documents', [[]])[0]
-                    metadatas = results.get('metadatas', [[]])[0]
 
-                    if not documents:
-                        print("      - 근거를 찾지 못했습니다.")
-                    else:
-                        for text, meta in zip(documents, metadatas):
-                            # 메타데이터에서 정보를 추출하여 Evidence 객체 재구성
-                            evidence = Evidence(
+                    results = self.collection.query(
+                        query_embeddings=[vec],  # ← query_texts 대신 임베딩 직접 전달
+                        n_results=3,
+                        where={"company_id": company.id},
+                    )
+                    docs = results.get("documents", [[]])[0]
+                    metas = results.get("metadatas", [[]])[0]
+                    evs: List[Evidence] = []
+                    for text, meta in zip(docs, metas):
+                        evs.append(
+                            Evidence(
                                 source=meta.get("source", "Unknown"),
                                 text=text,
-                                category=meta.get("category", axis_key), # 저장된 카테고리 우선 사용
+                                category=meta.get("category", axis_key),
                                 strength=meta.get("strength", "weak"),
                                 published=meta.get("published"),
                             )
-                            retrieved_evidences.append(evidence)
-                        print(f"      - {len(retrieved_evidences)}개의 구조화된 근거를 찾았습니다.")
-                    
-                    evidence_per_axis[axis_key] = retrieved_evidences
-
+                        )
+                    ev_per_axis[axis_key] = evs
                 except Exception as e:
                     print(f"      - 🚨 문서 검색 중 오류 발생: {e}")
-                    evidence_per_axis[axis_key] = []
+                    ev_per_axis[axis_key] = []
 
-            all_companies_evidence[company.id] = evidence_per_axis
+            # ★ 회사별 axis 개수 로깅
+            axis_counts = {k: len(v) for k, v in ev_per_axis.items()}
+            logging.info(
+                f"[RAG] retrieved[{company.id}] axis_counts={axis_counts} total={sum(axis_counts.values())}"
+            )
 
-        # PipelineState의 새 필드에 검색 결과 전체를 업데이트
+            all_companies_evidence[company.id] = ev_per_axis
+
         state.retrieved_evidence = all_companies_evidence
         print("\n✅ 모든 회사에 대한 근거 자료 검색을 완료했습니다.")
-        
         return state
 
+
 # --- 로컬 테스트를 위한 코드 ---
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 테스트 전, AugmentAgent가 ChromaDB에 데이터를 저장했다고 가정합니다.
     # collection.add(documents=[...], metadatas=[{"company_id": "...", "source": "..."}])
     try:
@@ -134,8 +132,10 @@ if __name__ == '__main__':
             query="AI financial advisory startup",
             companies=[
                 CompanyMeta(id="acme-corp", name="Acme Corp", website="https://acme.example.com"),
-                CompanyMeta(id="beta-fi", name="Beta Finance", website="https://betafi.example.com"),
-            ]
+                CompanyMeta(
+                    id="beta-fi", name="Beta Finance", website="https://betafi.example.com"
+                ),
+            ],
         )
 
         final_state = retriever_agent.invoke(initial_state)
@@ -147,6 +147,6 @@ if __name__ == '__main__':
                 print(f"  - Axis: {axis} ({len(evidences)}개)")
                 for ev in evidences:
                     print(f"    - [Source: {ev.source}] {ev.text[:80]}...")
-                    
+
     except Exception as e:
         print(f"\n테스트 실행 중 오류가 발생했습니다: {e}")

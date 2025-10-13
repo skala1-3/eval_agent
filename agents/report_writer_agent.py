@@ -13,18 +13,27 @@ from playwright.async_api import async_playwright
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
+from graph.state import PipelineState
+
+
 # ---------------- Utils ----------------
 def as_float(x: Any, default: float = 0.0) -> float:
     try:
-        if isinstance(x, (int, float)): return float(x)
-        if isinstance(x, str): return float(x.strip())
-    except Exception: pass
+        if isinstance(x, (int, float)):
+            return float(x)
+        if isinstance(x, str):
+            return float(x.strip())
+    except Exception:
+        pass
     return default
 
+
 def safe_str(x: Any, default="-") -> str:
-    if x is None: return default
+    if x is None:
+        return default
     s = str(x).strip()
     return s if s else default
+
 
 def truncate(text: str, limit: int) -> str:
     text = (text or "").strip()
@@ -32,10 +41,14 @@ def truncate(text: str, limit: int) -> str:
         return text[:limit].rstrip() + "..."
     return text
 
+
 def strength_from_score(v: float) -> str:
-    if v >= 2.0: return "strong"
-    if v >= 1.0: return "medium"
+    if v >= 2.0:
+        return "strong"
+    if v >= 1.0:
+        return "medium"
     return "weak"
+
 
 # ---------------- Consulting System Prompt ----------------
 SYSTEM_PROMPT = """
@@ -64,13 +77,16 @@ SYSTEM_PROMPT = """
 }
 """
 
+
 # ---------------- Agent ----------------
 class ReportWriterAgent:
-    def __init__(self,
-                 template_dir="docs/templates",
-                 template_name="report.html.j2",
-                 output_dir="outputs/reports",
-                 model="gpt-4o-mini"):
+    def __init__(
+        self,
+        template_dir="docs/templates",
+        template_name="report.html.j2",
+        output_dir="outputs/reports",
+        model="gpt-4o-mini",
+    ):
         self.template_dir = template_dir
         self.template_name = template_name
         self.output_dir = output_dir
@@ -78,7 +94,7 @@ class ReportWriterAgent:
 
         self.env = Environment(
             loader=FileSystemLoader(self.template_dir),
-            autoescape=select_autoescape(["html","xml"])
+            autoescape=select_autoescape(["html", "xml"]),
         )
 
         self.llm = ChatOpenAI(model=model, temperature=0.4)
@@ -86,8 +102,39 @@ class ReportWriterAgent:
 
         # 표시 길이 정책(가독성)
         self.notes_len = 140
-        self.ev_len    = 90
-        self.ev_limit  = 3
+        self.ev_len = 90
+        self.ev_limit = 3
+
+    def __call__(self, state: PipelineState) -> PipelineState:
+        # scorecard 순회, invest만 생성
+        for company in state.companies:
+            sc = state.scorecard.get(company.id)
+            if not sc or sc.decision != "invest":
+                continue
+
+            # 기존 run()이 기대하는 dict로 최소 컨텍스트 어댑트
+            fae_items = {it.key: it.value for it in sc.items}
+            fae_items["total"] = sc.total
+            conf_mean = 0.0
+            if sc.items:
+                conf_mean = sum(it.confidence for it in sc.items) / len(sc.items)
+
+            payload = {
+                "company_name": company.name,
+                "company_meta": company.model_dump(),
+                "fae_score": fae_items,
+                "confidence": {"mean": conf_mean},
+                "startup_summary": "",
+                "tech_summary": "",
+                "market_eval": "",
+                "competitor_summary": "",
+                "decision_rationale": "",
+                "query": state.query,
+            }
+            res = asyncio.run(self.run(payload))
+            if res and res.get("report_path"):
+                state.reports[company.id] = res["report_path"]
+        return state
 
     async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         company = state.get("company_name", "Unknown")
@@ -100,9 +147,15 @@ class ReportWriterAgent:
         context = await self._build_context(company, state, total, mean_conf)
         _, pdf_path = await self._render_pdf(company, context)
         logging.info(f"[REPORT] created: {pdf_path}")
-        return {"report_path": pdf_path, "skipped": False, "decision": context["scorecard"]["decision"]}
+        return {
+            "report_path": pdf_path,
+            "skipped": False,
+            "decision": context["scorecard"]["decision"],
+        }
 
-    async def _build_context(self, company: str, state: Dict[str, Any], total: float, mean_conf: float) -> Dict[str, Any]:
+    async def _build_context(
+        self, company: str, state: Dict[str, Any], total: float, mean_conf: float
+    ) -> Dict[str, Any]:
         meta = state.get("company_meta") or {}
         company_obj = {
             "name": company,
@@ -126,13 +179,15 @@ class ReportWriterAgent:
         }
 
         # 전역 텍스트 블롭(LLM 컨텍스트)
-        blob = "\n".join([
-            state.get("startup_summary",""),
-            state.get("tech_summary",""),
-            state.get("market_eval",""),
-            state.get("competitor_summary",""),
-            state.get("decision_rationale",""),
-        ])
+        blob = "\n".join(
+            [
+                state.get("startup_summary", ""),
+                state.get("tech_summary", ""),
+                state.get("market_eval", ""),
+                state.get("competitor_summary", ""),
+                state.get("decision_rationale", ""),
+            ]
+        )
 
         # 1) 컨설팅형 본문 생성
         consulting = await self._gen_consulting_sections(company_obj, axes, total, mean_conf, blob)
@@ -140,33 +195,41 @@ class ReportWriterAgent:
         # 2) 점수표 아이템(템플릿 표/카드 호환)
         normalized_items: List[Dict[str, Any]] = []
         for key, label in [
-            ("ai_tech","AI Tech"), ("market","Market"), ("traction","Traction"),
-            ("moat","Moat"), ("risk","Risk"), ("team","Team"),
-            ("deployability","Deployability"), ("total","Total")
+            ("ai_tech", "AI Tech"),
+            ("market", "Market"),
+            ("traction", "Traction"),
+            ("moat", "Moat"),
+            ("risk", "Risk"),
+            ("team", "Team"),
+            ("deployability", "Deployability"),
+            ("total", "Total"),
         ]:
             score = total if key == "total" else axes.get(key, 0.0)
             notes = f"{label} 지표는 {score:.2f} 수준."
-            ev_rows = [{"strength": strength_from_score(score),
-                        "text": "핵심 근거 보강 필요",
-                        "source": "-", "published": "-"}]
-            normalized_items.append({
-                "key": key,
-                "value": score,
-                "confidence": mean_conf,
-                "notes": truncate(notes, self.notes_len),
-                "evidence": ev_rows
-            })
+            ev_rows = [
+                {
+                    "strength": strength_from_score(score),
+                    "text": "핵심 근거 보강 필요",
+                    "source": "-",
+                    "published": "-",
+                }
+            ]
+            normalized_items.append(
+                {
+                    "key": key,
+                    "value": score,
+                    "confidence": mean_conf,
+                    "notes": truncate(notes, self.notes_len),
+                    "evidence": ev_rows,
+                }
+            )
 
         context = {
             "company": company_obj,
-            "query": state.get("query",""),
+            "query": state.get("query", ""),
             "generated_at": state.get("generated_at") or datetime.now().strftime("%Y-%m-%d %H:%M"),
             "evidence_limit_per_axis": self.ev_limit,
-            "scorecard": {
-                "total": total,
-                "decision": "invest",
-                "items": normalized_items
-            },
+            "scorecard": {"total": total, "decision": "invest", "items": normalized_items},
             # 새 섹션(템플릿에서 표시)
             "exec_summary": consulting["exec_summary"],
             "position_points": consulting["position_points"],
@@ -175,10 +238,12 @@ class ReportWriterAgent:
         }
         return context
 
-    async def _gen_consulting_sections(self, company: Dict[str, Any], axes: Dict[str, float],
-                                       total: float, conf: float, blob: str) -> Dict[str, Any]:
+    async def _gen_consulting_sections(
+        self, company: Dict[str, Any], axes: Dict[str, float], total: float, conf: float, blob: str
+    ) -> Dict[str, Any]:
         sys = SystemMessage(content=SYSTEM_PROMPT)
-        user = HumanMessage(content=f"""
+        user = HumanMessage(
+            content=f"""
 [기업 정보]
 {json.dumps(company, ensure_ascii=False)}
 
@@ -190,7 +255,8 @@ total={total:.2f}, confidence={conf:.2f}
 {blob[:1500]}
 
 지침에 맞는 JSON만 반환.
-""")
+"""
+        )
         try:
             res = await self.llm.ainvoke([sys, user])
             j = json.loads(res.content)
@@ -198,30 +264,29 @@ total={total:.2f}, confidence={conf:.2f}
             # LLM 실패 시 최소 구조 보장
             j = {
                 "exec_summary": f"{company.get('name','기업')}은(는) 총점 {total:.2f}로 투자 권장 수준입니다. "
-                                f"핵심 지표의 신뢰도는 {conf:.2f}입니다.",
+                f"핵심 지표의 신뢰도는 {conf:.2f}입니다.",
                 "position_points": [
                     "도메인 특화 AI 역량 보유",
                     "엔터프라이즈 보안/온프렘 대응",
-                    "금융기관 PoC 진행 및 상용화 가능성"
+                    "금융기관 PoC 진행 및 상용화 가능성",
                 ],
-                "risks": [
-                    "규제 및 데이터 접근 권한 리스크",
-                    "대형 경쟁사 진입시 차별화 유지 필요"
-                ],
-                "outlook": "단기적으로는 레퍼런스 확보 및 ARR 가시화, 중기적으로는 파트너십/리전 확장 권장."
+                "risks": ["규제 및 데이터 접근 권한 리스크", "대형 경쟁사 진입시 차별화 유지 필요"],
+                "outlook": "단기적으로는 레퍼런스 확보 및 ARR 가시화, 중기적으로는 파트너십/리전 확장 권장.",
             }
 
         # 길이/개수 정규화
-        j["exec_summary"] = truncate(j.get("exec_summary",""), 900)
-        j["outlook"] = truncate(j.get("outlook",""), 900)
-        j["position_points"] = [truncate(s, 160) for s in (j.get("position_points") or [])][:6] or ["강점 정리 필요"]
+        j["exec_summary"] = truncate(j.get("exec_summary", ""), 900)
+        j["outlook"] = truncate(j.get("outlook", ""), 900)
+        j["position_points"] = [truncate(s, 160) for s in (j.get("position_points") or [])][:6] or [
+            "강점 정리 필요"
+        ]
         j["risks"] = [truncate(s, 160) for s in (j.get("risks") or [])][:5] or ["리스크 정리 필요"]
         return j
 
     async def _render_pdf(self, company: str, context: Dict[str, Any]):
         html = self.env.get_template(self.template_name).render(**context)
         html_path = os.path.join(self.output_dir, f"{company}.html")
-        pdf_path  = os.path.join(self.output_dir, f"{company}.pdf")
+        pdf_path = os.path.join(self.output_dir, f"{company}.pdf")
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(html)
 
@@ -234,7 +299,7 @@ total={total:.2f}, confidence={conf:.2f}
                 format="A4",
                 print_background=True,
                 scale=0.9,
-                margin={"top":"16mm","bottom":"18mm","left":"14mm","right":"14mm"}
+                margin={"top": "16mm", "bottom": "18mm", "left": "14mm", "right": "14mm"},
             )
             await browser.close()
         return html_path, pdf_path
@@ -248,17 +313,22 @@ if __name__ == "__main__":
     dummy_state = {
         "company_name": "FinChat AI",
         "company_meta": {
-            "website":"https://finchat.ai",
-            "founded_year":"2023",
-            "stage":"Seed",
-            "headcount":"10-20",
-            "region":"KR",
-            "tags":["Financial AI","KYC","Contact Center"]
+            "website": "https://finchat.ai",
+            "founded_year": "2023",
+            "stage": "Seed",
+            "headcount": "10-20",
+            "region": "KR",
+            "tags": ["Financial AI", "KYC", "Contact Center"],
         },
         "fae_score": {
             "total": 8.2,
-            "ai_tech": 2.4, "market": 1.8, "traction": 1.3,
-            "moat": 1.0, "risk": 0.8, "team": 0.9, "deployability": 1.0
+            "ai_tech": 2.4,
+            "market": 1.8,
+            "traction": 1.3,
+            "moat": 1.0,
+            "risk": 0.8,
+            "team": 0.9,
+            "deployability": 1.0,
         },
         "confidence": {"mean": 0.62},
         "startup_summary": "금융 상담 자동화로 AHT 18% 감소, FCR 9%p 향상.",

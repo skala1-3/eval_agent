@@ -21,21 +21,35 @@ class SeraphAgent:
     def _search_google(self, query: str, num_results: int = 20) -> List[Dict[str, Any]]:
         """SerpApi를 이용해 AI 금융 스타트업 후보 검색"""
         logging.info(f"🔍 Searching Google (via SerpApi) for: {query}")
-        search = GoogleSearch({
-            "q": query,
-            "num": num_results,
-            "hl": "en",
-            "engine": "google",
-            "api_key": self.api_key
-        })
-        results = search.get_dict().get("organic_results", [])
-        return [
+        search = GoogleSearch(
             {
-                "name": r.get("title", ""),
-                "url": r.get("link", ""),
-                "summary": r.get("snippet", "")
+                "q": query,
+                "num": num_results,
+                "hl": "en",
+                "engine": "google",
+                "google_domain": "google.com",  # 추가
+                "safe": "off",
+                "api_key": self.api_key,
             }
-            for r in results if r.get("link")
+        )
+
+        raw = search.get_dict()
+
+        # ─ 추가: 메타/에러 확인용 로그
+        meta = raw.get("search_metadata", {})
+        status = meta.get("status")
+        err = raw.get("error")
+        if err:
+            logging.warning(f"SerpApi error: {err}")
+        logging.info(
+            f"SerpApi status={status}, total_results={len(raw.get('organic_results', []))}"
+        )
+
+        results = raw.get("organic_results", []) or []
+        return [
+            {"name": r.get("title", ""), "url": r.get("link", ""), "summary": r.get("snippet", "")}
+            for r in results
+            if r.get("link")
         ]
 
     def __call__(self, state: PipelineState) -> PipelineState:

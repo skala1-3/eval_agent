@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
-from collections import defaultdict
+from collections import defaultdict, Counter
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 import logging
@@ -49,6 +50,8 @@ MIN_ITEMS_FOR_AXIS: Dict[EvidenceCategory, int] = {
     "team": 1,
     "deployability": 2,
 }
+
+LOG_EVIDENCE_SAMPLES = 3  # 상단 어딘가에 정의
 
 # ─────────────────────────────────────────────────────────────
 # 유틸
@@ -210,6 +213,11 @@ def _gather_company_axis_evidence(
     return by_axis
 
 
+def _gather_company_axis_evidence_from_retrieved(state: PipelineState, company_id: str):
+    evmap = state.retrieved_evidence.get(company_id, {})
+    return {k: list(v) for k, v in evmap.items()}  # Evidence 리스트 그대로
+
+
 # ─────────────────────────────────────────────────────────────
 # 의사결정
 # ─────────────────────────────────────────────────────────────
@@ -249,19 +257,60 @@ class ScoringAgent:
         scorecards: Dict[str, ScoreCard] = {}
 
         for company in state.companies:
-            axis_map = _gather_company_axis_evidence(
-                state.chunks,
-                company.name,
-                getattr(company, "website", None),
-                getattr(company, "tags", []),
+            # RAG 결과 우선 사용, 없으면 chunks로 폴백
+            axis_map = state.retrieved_evidence.get(company.id, {})
+            if not axis_map:
+                axis_map = _gather_company_axis_evidence(
+                    state.chunks,
+                    company.name,
+                    getattr(company, "website", None),
+                    getattr(company, "tags", []),
+                )
+
+            # 전체 입력 개수 요약
+            axis_counts = {k: len(v) for k, v in axis_map.items()}
+            logging.info(
+                f"[Scoring] input[{company.id}] axis_counts={axis_counts} total={sum(axis_counts.values())}"
             )
 
             items: List[ScoreItem] = []
             for axis in AXIS_WEIGHTS.keys():
                 evs = axis_map.get(axis, [])
+
+                # 점수/신뢰도 계산
                 value, notes = _score_axis(evs)
                 conf_parts = _calc_confidence(evs, axis)
                 conf = _blend_confidence(conf_parts)
+
+                # ─ 추가 로깅: 축별 디테일
+                domains = [_domain_of(e.source) for e in evs if e.source]
+                dom_cnt = len(set(domains))
+                strengths = Counter([getattr(e, "strength", "weak") for e in evs])
+
+                # ★ 백슬래시가 들어가는 처리는 f-string 바깥에서 미리
+                sample_lines = []
+                for e in evs[:LOG_EVIDENCE_SAMPLES]:
+                    strength = getattr(e, "strength", "weak")
+                    src = e.source
+                    snippet = (e.text or "")[:120].replace("\n", " ")
+                    sample_lines.append(f"- [{strength}] {src} :: {snippet}")
+                samples_block = "\n".join(sample_lines) if sample_lines else "- no samples -"
+
+                # ★ f-string 대신 로거의 포맷 인자를 사용 (백슬래시 문제 회피)
+                logging.info(
+                    "[Scoring] %s | axis=%s | score=%.2f | conf=%.3f (cov=%.2f div=%.2f rec=%.2f) | evidences=%d(domains=%d, strengths=%s)\n%s",
+                    company.id,
+                    axis,
+                    value,
+                    conf,
+                    conf_parts.coverage,
+                    conf_parts.diversity,
+                    conf_parts.recency,
+                    len(evs),
+                    dom_cnt,
+                    dict(strengths),
+                    samples_block,
+                )
 
                 items.append(
                     ScoreItem(
@@ -275,17 +324,9 @@ class ScoringAgent:
 
             total = _weighted_total(items)
             decision = _decide(total, items)
-
-            # 디버그 로그(선택): 어떤 축이 몇 개 매칭됐는지 확인할 때 사용
-            logger.debug(
-                "[Scoring] %s → total=%.2f, decision=%s, axis_counts=%s",
-                company.name,
-                total,
-                decision,
-                {k: len(v) for k, v in axis_map.items()},
-            )
-
             scorecards[company.id] = ScoreCard(items=items, total=total, decision=decision)
+
+            logging.info("[Scoring] result[%s] total=%.2f decision=%s", company.id, total, decision)
 
         state.scorecard.update(scorecards)
         return state
