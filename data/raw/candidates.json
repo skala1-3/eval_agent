@@ -1,0 +1,26 @@
+[
+  {
+    "id": "cand_01",
+    "name": "Cnbc",
+    "website": "https://www.cnbc.com",
+    "founded_year": null,
+    "stage": null,
+    "headcount": null,
+    "region": null,
+    "tags": [
+      "An automated financial advisor called PortfolioPilot has quickly gained $20 billion in assets in a possible preview of how disruptive artificial intelligence ..."
+    ]
+  },
+  {
+    "id": "cand_02",
+    "name": "Tendi",
+    "website": "https://tendi.ai",
+    "founded_year": null,
+    "stage": null,
+    "headcount": null,
+    "region": null,
+    "tags": [
+      "Tendi is an AI financial advisor that helps you plan and achieve goals by analyzing spending, saving, and investing habits, and creating custom plans."
+    ]
+  }
+]
