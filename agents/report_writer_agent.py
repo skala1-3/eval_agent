@@ -3,10 +3,11 @@
 # - Executive Summary / Competitive Position / Risk & Considerations / Investment Outlook
 # - Evidence/Notes 길이 제한, PDF scale, OpenAI 호출 안전화(실패시 대체문구)
 # - 축별 카드에 ScoringAgent의 실제 Evidence(강도/텍스트/출처/날짜) 반영
+# - NEW: Strengths / Weaknesses bullets 생성(장·단점 섹션)
 
 import os, re, json, asyncio, logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from playwright.async_api import async_playwright
@@ -14,6 +15,28 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from graph.state import PipelineState
+
+
+# ---------------- (NEW) utils for bullets ----------------
+def _dedupe_list(items: List[str], thresh: float = 0.88) -> List[str]:
+    from difflib import SequenceMatcher
+
+    out = []
+    for s in items or []:
+        s = (s or "").strip()
+        if s and all(SequenceMatcher(None, s, t).ratio() < thresh for t in out):
+            out.append(s)
+    return out
+
+
+def _norm_bullet(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return s
+    s = re.sub(r"https?://\S+", "", s)  # URL 제거
+    s = re.sub(r"[.]+$", "", s)  # 끝 마침표 제거
+    s = re.sub(r"(다|요)$", "", s).strip()  # 종결어 제거(한국어)
+    return s
 
 
 def as_float(x: Any, default: float = 0.0) -> float:
@@ -47,6 +70,21 @@ def strength_from_score(v: float) -> str:
     if v >= 1.0:
         return "medium"
     return "weak"
+
+
+# ---------------- (NEW) prompts ----------------
+NARRATIVE_BULLET_PROMPT = """
+아래 정보를 참고해 **음슴체 불릿**을 생성.
+- strengths_bullets 5~8개, weaknesses_bullets 5~8개
+- 각 불릿 한 줄, 12~28단어 권장. 문장 끝 마침표·종결어 금지
+- 하이픈(-) 없이 내용만 반환(JSON만)
+입력:
+COMPANY = {company}
+AXES = {axes}
+BLOB = {blob}
+반환(JSON만):
+{{"strengths_bullets":["..."], "weaknesses_bullets":["..."]}}
+"""
 
 
 SYSTEM_PROMPT = """
@@ -95,6 +133,8 @@ class ReportWriterAgent:
         )
 
         self.llm = ChatOpenAI(model=model, temperature=0.4)
+        # (NEW) 내러티브/불릿은 살짝 창의도 높임
+        self.llm_free = ChatOpenAI(model=model, temperature=0.7)
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
         self.notes_len = 140
@@ -191,6 +231,13 @@ class ReportWriterAgent:
 
         consulting = await self._gen_consulting_sections(company_obj, axes, total, mean_conf, blob)
 
+        # (NEW) 장점/단점 불릿 생성
+        strengths_bullets, weaknesses_bullets = await self._gen_narrative_bullets(
+            company_obj, axes, blob
+        )
+        strengths_bullets = self._normalize_bullets(strengths_bullets) or ["강점 정리 필요"]
+        weaknesses_bullets = self._normalize_bullets(weaknesses_bullets) or ["취약점 정리 필요"]
+
         # 실제 Evidence 반영
         normalized_items: List[Dict[str, Any]] = []
         company_id = state.get("company_id")
@@ -258,6 +305,9 @@ class ReportWriterAgent:
             "position_points": consulting["position_points"],
             "risks": consulting["risks"],
             "outlook": consulting["outlook"],
+            # (NEW) 템플릿에 노출할 장·단점
+            "strength_bullets": strengths_bullets,
+            "weakness_bullets": weaknesses_bullets,
         }
         return context
 
@@ -303,6 +353,51 @@ total={total:.2f}, confidence={conf:.2f}
         ]
         j["risks"] = [truncate(s, 160) for s in (j.get("risks") or [])][:5] or ["리스크 정리 필요"]
         return j
+
+    # ---------------- (NEW) strengths/weaknesses bullets ----------------
+    async def _gen_narrative_bullets(
+        self,
+        company: Dict[str, Any],
+        axes: Dict[str, float],
+        blob: str,
+    ) -> Tuple[List[str], List[str]]:
+        sys = SystemMessage(content="컨설팅 톤, JSON only.")
+        prompt = NARRATIVE_BULLET_PROMPT.format(
+            company=json.dumps(company, ensure_ascii=False),
+            axes=json.dumps(axes, ensure_ascii=False),
+            blob=json.dumps({"blob": (blob or "")[:1200]}, ensure_ascii=False),
+        )
+        user = HumanMessage(content=prompt)
+        s_bullets: List[str] = []
+        w_bullets: List[str] = []
+        for _ in range(2):  # 2회 재시도
+            try:
+                res = await self.llm_free.ainvoke([sys, user])
+                txt = (res.content or "").strip()
+                m = re.search(r"\{.*\}", txt, flags=re.DOTALL)
+                if m:
+                    txt = m.group(0)
+                j = json.loads(txt)
+                s_bullets = [safe_str(x, "") for x in (j.get("strengths_bullets") or [])]
+                w_bullets = [safe_str(x, "") for x in (j.get("weaknesses_bullets") or [])]
+                break
+            except Exception as e:
+                logging.warning(f"[BULLETS] LLM error: {e}")
+        return s_bullets, w_bullets
+
+    def _normalize_bullets(self, bullets: List[str]) -> List[str]:
+        if not bullets:
+            return []
+        norm = []
+        for b in bullets:
+            b = _norm_bullet(b)
+            if not b:
+                continue
+            b = truncate(b, 140)
+            norm.append(b)
+        norm = _dedupe_list(norm)
+        # 최소 5개 미만이면 사용 보류(콜랩스 방지)
+        return norm[:8] if len(norm) >= 5 else []
 
     async def _render_pdf(self, company: str, context: Dict[str, Any]):
         html = self.env.get_template(self.template_name).render(**context)

@@ -79,6 +79,24 @@
     <p>{{ outlook }}</p>
   </section>
 
+  <section>
+    <h2>Strengths</h2>
+    <ul>
+      {% for b in strength_bullets %}
+        <li>{{ b }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section>
+    <h2>Weaknesses</h2>
+    <ul>
+      {% for b in weakness_bullets %}
+        <li>{{ b }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+
   <div class="pagebreak"></div>
 
   <!-- 레이더 + 축별 점수표 -->
