@@ -40,6 +40,7 @@ dependencies = [
   "google-search-results>=2.4.2",
   "jinja2>=3.1.6",
   "playwright>=1.55.0",
+  "rank-bm25>=0.2.2",
 ]
 
 # [KO] 선택(개발) 의존성: 포맷팅/정적검사/테스트는 후반 적용 권장

@@ -20,7 +20,7 @@
     "headcount": null,
     "region": null,
     "tags": [
-      "Tendi is an AI financial advisor that helps you plan and achieve goals by analyzing spending, saving, and investing habits, and creating custom plans."
+      "Tendi is an AI-powered personal financial advisor that helps you understand, plan, and achieve your financial goals with ease."
     ]
   },
   {
@@ -37,18 +37,6 @@
   },
   {
     "id": "cand_04",
-    "name": "Origin Financial | All‑in‑One Financial Platform for Budgeting ...",
-    "website": "https://useorigin.com/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "Origin is your personal AI Financial Advisor. Track your spending, investments, net worth and optimize your financial future—all in one place. Get Started."
-    ]
-  },
-  {
-    "id": "cand_05",
     "name": "Zocks | The AI Assistant for Financial Advisors | AI Software for ...",
     "website": "https://www.zocks.io/",
     "founded_year": null,
@@ -57,6 +45,18 @@
     "region": null,
     "tags": [
       "Save 10+ hours a week with AI. Thousands of financial advisors & wealth managers use Zocks to automate note-taking, client emails, intake forms & more."
+    ]
+  },
+  {
+    "id": "cand_05",
+    "name": "Origin Financial | All‑in‑One Financial Platform for Budgeting ...",
+    "website": "https://useorigin.com/",
+    "founded_year": null,
+    "stage": null,
+    "headcount": null,
+    "region": null,
+    "tags": [
+      "Origin is your personal AI Financial Advisor. Track your spending, investments, net worth and optimize your financial future—all in one place. Get Started."
     ]
   },
   {
@@ -73,18 +73,6 @@
   },
   {
     "id": "cand_07",
-    "name": "On the fence about this but what's the best AI advisor for ...",
-    "website": "https://www.reddit.com/r/Fire/comments/1g0qyek/on_the_fence_about_this_but_whats_the_best_ai/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "You may want to look at m1 finance. While not a robo advisor, it allows you to easily rebalance when you buy in. Pick a pie / portfolio you like ..."
-    ]
-  },
-  {
-    "id": "cand_08",
     "name": "AI could make financial advice more equitable and resilient",
     "website": "https://www.weforum.org/stories/2025/06/ai-financial-advice-accessible/",
     "founded_year": null,
@@ -93,6 +81,18 @@
     "region": null,
     "tags": [
       "Artificial intelligence can help advisers give more holistic financial advice or support people researching their own savings and investment ..."
+    ]
+  },
+  {
+    "id": "cand_08",
+    "name": "Meet HUB, Your Ultimate AI Financial Advisor",
+    "website": "https://hub-analytics.com/blog/ai-financial-advisor/",
+    "founded_year": null,
+    "stage": null,
+    "headcount": null,
+    "region": null,
+    "tags": [
+      "Discover how HUB Analytics leverages AI as your financial advisor for insightful analysis and reporting on client businesses."
     ]
   },
   {
@@ -105,18 +105,6 @@
     "region": null,
     "tags": [
       "Jump is an AI-powered assistant for financial advisors that automates key tasks, improves compliance, reduces risk exposure, and more. Start a free trial today."
-    ]
-  },
-  {
-    "id": "cand_10",
-    "name": "Meet HUB, Your Ultimate AI Financial Advisor",
-    "website": "https://hub-analytics.com/blog/ai-financial-advisor/",
-    "founded_year": null,
-    "stage": null,
-    "headcount": null,
-    "region": null,
-    "tags": [
-      "HUB is an AI-powered tool that provides personalized financial guidance, using AI to analyze data and suggest investment plans. It is a game- ..."
     ]
   }
 ]
