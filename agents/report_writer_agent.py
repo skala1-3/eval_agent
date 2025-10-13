@@ -1,12 +1,8 @@
 # agents/report_writer_agent.py
-# Consulting Report (v4.0 – KPI tiles / Competition Matrix / Risk Heat / Scenario Table)
-# - 기존 섹션 유지 + 신규 4개 섹션 추가
-# - KPI 타일: 값 없으면 N/A + "수집 필요" 뱃지
-# - 경쟁 매트릭스: 고정 행(기능/보안/배포/로컬/가격/레퍼런스), 열=competitors; 값 없으면 '—'
-# - 리스크 Heat: Risk / Likelihood / Impact / Mitigation (없으면 LLM로 정성 생성)
-# - 시나리오 표: Upside / Base / Downside (없으면 LLM로 정성 생성)
-# - LLM 사용: 새로운 정성 표/문구 생성에 활용 (필수 수치 추정은 하지 않음)
-# - 강점/취약 점 불릿, Evidence 표시(도메인/제목), total evidence 숨김 유지
+# Consulting Report (no-KPI version)
+# - KPI 섹션 완전 제거
+# - 경쟁 매트릭스 / 리스크 Heat / 시나리오 표 / 강점·취약 불릿 / Evidence / 결론(심층) 유지
+# - 템플릿 버그 대응: dict 동적 키 접근은 c.get(r.key, '—') 사용
 
 import os, re, json, asyncio, logging
 from datetime import datetime
@@ -92,13 +88,13 @@ def _i18n(lang: str) -> Dict[str, Any]:
             "invest":"INVEST","hold":"HOLD","total":"Total","confidence":"Confidence",
             "evidence":"Evidence by Axis","strength":"Strength","text":"Text","source":"Source","date":"Date",
             "narrative":"Strengths & Weaknesses",
-            "kpis":"Key KPIs","matrix":"Competitive Matrix","risk_heat":"Risk Heat","scenarios":"Scenarios"
+            "matrix":"Competitive Matrix","risk_heat":"Risk Heat","scenarios":"Scenarios"
         }}
     return {"lang":"ko","labels":{
         "invest":"투자 권장","hold":"보류","total":"총점","confidence":"신뢰도",
         "evidence":"근거(축별)","strength":"강도","text":"텍스트","source":"출처","date":"날짜",
         "narrative":"강점/취약 내러티브",
-        "kpis":"핵심 KPI","matrix":"경쟁 매트릭스","risk_heat":"리스크 Heat","scenarios":"시나리오"
+        "matrix":"경쟁 매트릭스","risk_heat":"리스크 Heat","scenarios":"시나리오"
     }}
 
 # ---------------- Prompts ----------------
@@ -120,9 +116,8 @@ NARRATIVE_BULLET_PROMPT = """
 아래 정보를 참고하되, 공개 지식과 업계 일반론을 활용해 **음슴체 불릿**을 생성.
 요구 사항:
 - strengths_bullets 5~8개, weaknesses_bullets 5~8개.
-- 각 불릿은 한 줄, 12~28단어 권장. 문장 끝 마침표 금지, 종결어 금지.
-- **하이픈(-)을 붙이지 말고 내용만** 반환 (템플릿에서 점 불릿 렌더링).
-- 앞 섹션에서 이미 언급된 수치/키워드 반복 금지.
+- 각 불릿 한 줄, 12~28단어 권장. 문장 끝 마침표 금지, 종결어 금지.
+- **하이픈(-) 없이 내용만** 반환(템플릿에서 점 불릿).
 
 금지 키워드: {banlist}
 
@@ -157,7 +152,7 @@ FACTS = {facts_json}
 RISK_HEAT_PROMPT = """
 아래 정보를 참고해 리스크 테이블을 생성.
 열: Risk (짧은 제목), Likelihood(저/중/고), Impact(저/중/고), Mitigation(완화책, 한 줄).
-5~7행 권장. 숫자 추정은 금지.
+5~7행 권장. 숫자 추정 금지.
 
 입력:
 COMPANY = {company}
@@ -203,8 +198,8 @@ class ReportWriterAgent:
             autoescape=select_autoescape(["html","xml"])
         )
 
-        self.llm = ChatOpenAI(model=model, temperature=0.25)
-        self.llm_free = ChatOpenAI(model=model, temperature=0.7)
+        self.llm = ChatOpenAI(model=model, temperature=0.25)     # 규범적
+        self.llm_free = ChatOpenAI(model=model, temperature=0.7) # 창의적(결론/내러티브)
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
         self.notes_len   = int(os.getenv("NOTES_LEN", "140"))
@@ -256,7 +251,6 @@ class ReportWriterAgent:
             "deployability": as_float(fae.get("deployability"), 0.0),
         }
 
-        # Blobs for LLM context
         blob = "\n".join([
             state.get("startup_summary",""),
             state.get("tech_summary",""),
@@ -267,12 +261,7 @@ class ReportWriterAgent:
 
         product_docs  = state.get("product_docs")  or []
         market_docs   = state.get("market_docs") or []
-        customers     = state.get("customers") or []
-        partners      = state.get("partners")  or []
-        security_certs= state.get("security") or {}
-        pricing_plans = state.get("pricing") or []
-        competitors   = state.get("competitors") or []   # [{name, product, security, deployment, localization, pricing, references}]
-        metrics       = self._normalize_metrics(state.get("metrics") or {})  # KPI tiles
+        competitors   = state.get("competitors") or []
         risk_table    = state.get("risk_table") or await self._gen_risk_heat(company_obj, axes, blob)
         scenarios     = state.get("scenarios") or await self._gen_scenarios(company_obj, axes, blob)
 
@@ -311,7 +300,7 @@ class ReportWriterAgent:
                 "evidence": ev_rows
             })
 
-        # 금지어(중복 억제)
+        # 금지어 추출(중복 억제)
         banlist = self._harvest_said_facts({
             "exec_summary": grounded["exec_summary"],
             "position_points": grounded["position_points"],
@@ -338,7 +327,7 @@ class ReportWriterAgent:
         decision_label = i18n["labels"]["invest"]
         items_for_evidence = [it for it in normalized_items if it["key"] != "total"]
 
-        # 경쟁 매트릭스 표 데이터 정규화
+        # 경쟁 매트릭스 표
         comp_matrix = self._normalize_comp_matrix(competitors)
 
         context = {
@@ -364,44 +353,15 @@ class ReportWriterAgent:
             "confidence_mean": mean_conf,
             "radar_chart_path": state.get("radar_chart_path") or None,
 
-            # 신규 섹션들
-            "metrics": metrics,
+            # KPI 제거 → 컨텍스트에 metrics 없음
             "comp_matrix": comp_matrix,
             "risk_heat": risk_table,
             "scenarios": scenarios,
         }
         return context
 
-    # ----- KPI tiles -----
-    def _normalize_metrics(self, m: Dict[str, Any]) -> Dict[str, Any]:
-        # 키: nrr, grr, payback_months, gross_margin, win_rate, pipeline_x, customers_count, arr_proxy
-        def norm_pct(v): 
-            s = safe_str(v,"").replace("%","").strip()
-            try:
-                f = float(s)
-                return f"{f:.0f}%"
-            except: 
-                return "N/A"
-        def norm_num(v):
-            try:
-                if v is None or v == "": return "N/A"
-                return str(v)
-            except: return "N/A"
-        out = {
-            "nrr": norm_pct(m.get("nrr")),
-            "grr": norm_pct(m.get("grr")),
-            "payback_months": norm_num(m.get("payback_months")),
-            "gross_margin": norm_pct(m.get("gross_margin")),
-            "win_rate": norm_pct(m.get("win_rate")),
-            "pipeline_x": norm_num(m.get("pipeline_x")),
-            "customers_count": norm_num(m.get("customers_count")),
-            "arr_proxy": norm_num(m.get("arr_proxy")),
-        }
-        return out
-
     # ----- Competition matrix -----
     def _normalize_comp_matrix(self, competitors: List[Dict[str,Any]]) -> Dict[str, Any]:
-        # rows: product, security, deployment, localization, pricing, references
         cols = []
         for c in (competitors or []):
             cols.append({
@@ -414,7 +374,6 @@ class ReportWriterAgent:
                 "references": safe_str(c.get("references"), "—"),
             })
         if not cols:
-            # 최소 컬럼 2개 보장 (Generic)
             cols = [
                 {"name":"Generic A","product":"—","security":"—","deployment":"—","localization":"—","pricing":"—","references":"—"},
                 {"name":"Generic B","product":"—","security":"—","deployment":"—","localization":"—","pricing":"—","references":"—"},
@@ -428,7 +387,7 @@ class ReportWriterAgent:
             {"key":"references","label":"레퍼런스"},
         ]}
 
-    # ----- Evidence -----
+    # ----- Evidence 수집 -----
     def _collect_evidence(self, state: Dict[str, Any], axes: Dict[str, float], blob: str) -> Dict[str, List[EvidenceItem]]:
         out: Dict[str, List[EvidenceItem]] = {k: [] for k in list(axes.keys()) + ["total"]}
         def add(axis: str, it: Dict[str, Any]):
@@ -463,7 +422,7 @@ class ReportWriterAgent:
             out[k] = items2
         return out
 
-    # ----- LLM standard sections -----
+    # ----- LLM 표준 섹션 -----
     async def _gen_open_sections(self, company: Dict[str,Any], axes: Dict[str,float],
                                  product_docs: List[Dict[str,Any]],
                                  market_docs: List[Dict[str,Any]],
@@ -600,14 +559,12 @@ class ReportWriterAgent:
                 break
             except Exception as e:
                 logging.warning(f"[RISK HEAT] LLM error: {e}")
-        # 폴백
         if not rows:
             rows = [
                 {"risk":"규제/거버넌스", "likelihood":"중", "impact":"고", "mitigation":"감사·레지던시 체크리스트 및 재인증 계획"},
                 {"risk":"영업 파이프라인", "likelihood":"중", "impact":"중", "mitigation":"레퍼런스/채널 확보와 전환율 관리"},
                 {"risk":"경쟁/대체재", "likelihood":"중", "impact":"중", "mitigation":"차별 기능·TCO·보안 패키지 강조"},
             ]
-        # 정규화
         norm = []
         for r in rows:
             norm.append({
@@ -635,7 +592,6 @@ class ReportWriterAgent:
                 break
             except Exception as e:
                 logging.warning(f"[SCENARIOS] LLM error: {e}")
-        # 폴백
         def nz(x): return truncate(safe_str(x,"—"), 160)
         if not data:
             data = {
@@ -651,7 +607,7 @@ class ReportWriterAgent:
                         "conditions": nz(data[k].get("conditions")) }
         return data
 
-    # ----- shared helpers -----
+    # ----- helpers -----
     def _harvest_said_facts(self, context: Dict[str, Any]) -> List[str]:
         said = []
         said.append(context.get("exec_summary",""))
@@ -746,20 +702,11 @@ if __name__ == "__main__":
         "decision_rationale": "시장성/기술성 우수 → 투자 권장.",
         "query": "AI financial advisory startup",
 
-        # 신규: KPI tiles (없으면 자동 N/A)
-        "metrics": {
-            "nrr":"112%", "grr":"96%", "payback_months": "10",
-            "gross_margin":"68%", "win_rate":"29%", "pipeline_x":"3.4x",
-            "customers_count":"12", "arr_proxy":"-"
-        },
-
-        # 경쟁 매트릭스 (없으면 Generic A/B)
         "competitors": [
             {"name":"CompAlpha","product":"LLM routing, agent assist","security":"SOC2","deployment":"Cloud/On-prem","localization":"EN/KO","pricing":"per seat","references":"Tier-1 bank"},
             {"name":"CompBeta","product":"Voice+Chat suite","security":"ISO27001","deployment":"Cloud","localization":"EN/JP","pricing":"usage","references":"Telecom, BFSI"}
         ],
 
-        # Evidence 예시
         "evidence": {
             "ai_tech": [
                 {"text":"온프렘/VPC 지원 및 PII 마스킹 제공", "source_url":"https://finchat.ai/security", "published_at":"2025-09-21", "strength":"strong", "title":"Security Features"}
