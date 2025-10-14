@@ -8,6 +8,11 @@
 **Agentic RAG**는  
 AI가 스타트업을 자동으로 **탐색·분석·평가·리포트화** 하는 **Agentic 파이프라인**입니다.  
 
+Agentic RAG는 특정 산업이나 분야에 제한되지 않고,
+자연어 쿼리만으로 스타트업을 탐색·분석·평가할 수 있는 범용 에이전트형 파이프라인입니다.
+사용자는 단순히 “헬스케어 AI 스타트업 중 유망한 회사를 알려줘”처럼 질의하면
+전체 파이프라인이 자동으로 작동해 결과 리포트를 생성합니다.
+
 투자자·컨설턴트·리서처가 직접 웹을 뒤지고 보고서를 작성하던 과정을,  
 LangGraph 기반 멀티 에이전트 구조로 완전 자동화했습니다.
 
@@ -76,6 +81,15 @@ companies  →  chunks  →  evidence  →  scorecard  →  reports
 | **RAG 프레임워크** | LangGraph                              |
 | **리포트 생성**    | Jinja2, Playwright (HTML→PDF)          |
 | **환경 관리**     | uv / .env                     |
+
+---
+
+## 임베딩 파이프라인
+
+HTML/PDF에서 추출된 텍스트를 OpenAI text-embedding-3-small 모델로 벡터화하고,
+ChromaDB에 cosine similarity 기반으로 저장합니다.
+각 evidence는 축(axis), 출처(strength), 게시일 등의 메타데이터와 함께
+PipelineState.chunks에 누적되어 이후 검색 및 점수화 단계에 활용됩니다.
 
 ---
 
